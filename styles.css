@@ -1195,7 +1195,7 @@ html, body {
   max-width: 100%;
   overflow: hidden;
   background: #080916;
-  background-image: url('../data/img/room/room-bg.png');
+  background-image: url('data/img/room/room-bg.png');
   background-size: cover;  /* square container + square image = perfect fit, no crop */
   background-position: center top;
 }
@@ -1213,27 +1213,27 @@ html, body {
 
 /* Monitor glow — mix-blend-mode: screen (additive light) */
 .rest-layer--monitors {
-  background-image: url('../data/img/room/monitor-lights.png');
+  background-image: url('data/img/room/monitor-lights.png');
   mix-blend-mode: screen;
   transition: opacity 80ms;
 }
 
 /* Skill monitor — separate timing, screen blend */
 .rest-layer--skill-monitor {
-  background-image: url('../data/img/room/skill-monitor-light.png');
+  background-image: url('data/img/room/skill-monitor-light.png');
   mix-blend-mode: screen;
   transition: opacity 80ms;
 }
 
 /* Lamp shadows — multiply darkens the scene */
 .rest-layer--lamp-shadows {
-  background-image: url('../data/img/room/room-light-shadows.png');
+  background-image: url('data/img/room/room-light-shadows.png');
   mix-blend-mode: multiply;
 }
 
 /* City window — soft-light, time-of-day driven */
 .rest-layer--window-city {
-  background-image: url('../data/img/room/windows-city-softlight.png');
+  background-image: url('data/img/room/windows-city-softlight.png');
   mix-blend-mode: soft-light;
 }
 

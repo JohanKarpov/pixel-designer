@@ -84,6 +84,9 @@ function _renderEnergyCounter() {
     el.classList.toggle('planning-energy-counter--full', used >= max);
 }
 
+// Placeholder — no dedicated IP-counter element currently in DOM.
+function _renderIPCounter() {}
+
 function _renderKanban() {
     // Keep title node, replace rest
     const poolTitle  = _poolCol.querySelector('.kanban__col-title');
