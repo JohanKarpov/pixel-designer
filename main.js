@@ -20,6 +20,12 @@ import { onEnterWork, onLeaveWork, onOrdersChanged, onStateChanged } from './src
 import { onEnterResults }           from './src/screens/results.js';
 import { onEnterRest, onLeaveRest }  from './src/screens/rest.js';
 import { playBgm, stopBgm, setBgmVolume, getBgmVolume } from './src/core/bgm.js';
+import { preloadAssets }            from './src/core/preload.js';
+
+// ── Service Worker ────────────────────────────────────────────────────
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
+}
 
 // ── Scaling: set --r and --vh on :root ──────────────────────────────────────
 // --r  : 1/390 of capped viewport width (max 430px — widest common phone)
@@ -111,6 +117,21 @@ setEconomyCallbacks({
     onStateChanged:  () => { if (_prevPhase === 'work') onStateChanged();  },
 });
 calcOfflineOnStartup();
+
+// ── Preload all images, then reveal game ───────────────────────────────
+const _loadingBar = document.getElementById('loading-bar');
+const _loadingPct = document.getElementById('loading-pct');
+await preloadAssets(p => {
+    const pct = Math.round(p * 100);
+    if (_loadingBar) _loadingBar.style.width = `${pct}%`;
+    if (_loadingPct) _loadingPct.textContent = `${pct}%`;
+});
+const _loadingScreen = document.getElementById('loading-screen');
+if (_loadingScreen) {
+    _loadingScreen.classList.add('loading-screen--done');
+    _loadingScreen.addEventListener('transitionend', () => _loadingScreen.remove(), { once: true });
+}
+
 restorePhaseFromState();
 
 // Wire tickers for the restored phase (onPhaseChange not called for restored phases)
