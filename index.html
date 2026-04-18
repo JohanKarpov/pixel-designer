@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#0e0e12">
+  <title>mid-designer</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- ── PLANNING ─────────────────────────────────────────── -->
+  <div data-screen="planning">
+    <header class="screen-header">
+      <span class="screen-header__title">Планирование</span>
+      <span class="screen-header__day" id="planning-day-label">День 1</span>
+      <span class="screen-header__hour">9:00</span>
+      <button class="vol-btn" id="vol-btn" aria-label="Громкость">🔊</button>
+    </header>
+
+    <div class="screen-body">
+
+      <!-- Focus selector -->
+      <div>
+        <p class="section-label" style="margin-bottom:calc(var(--r)*8)">Фокус дня</p>
+        <div class="planning-focus-grid">
+          <button class="focus-btn" data-focus="work">
+            <span class="focus-btn__icon">💼</span>
+            <span>Работа</span>
+            <span class="focus-btn__bonus">+20% пейаут</span>
+          </button>
+          <button class="focus-btn" data-focus="research">
+            <span class="focus-btn__icon">🔬</span>
+            <span>Ресёрч</span>
+            <span class="focus-btn__bonus">+30% XP</span>
+          </button>
+          <button class="focus-btn" data-focus="tools">
+            <span class="focus-btn__icon">🤖</span>
+            <span>Инструменты</span>
+            <span class="focus-btn__bonus">+20% автоматика</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Kanban -->
+      <div>
+        <p class="section-label" style="margin-bottom:calc(var(--r)*8)">Очередь заказов</p>
+        <div class="kanban" id="kanban">
+          <div class="kanban__col" id="kanban-pool" data-col="pool">
+            <span class="kanban__col-title">Доступные</span>
+            <!-- order cards injected by planning.js -->
+          </div>
+          <div class="kanban__col" id="kanban-queue" data-col="queue">
+            <span class="kanban__col-title">На день (макс 5)</span>
+            <!-- queued cards injected by planning.js -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Consumables row -->
+      <div>
+        <p class="section-label" style="margin-bottom:calc(var(--r)*8)">Расходники</p>
+        <div class="card">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:calc(var(--r)*10)">
+            <span>🚬 Сигареты: <b id="planning-cigs">—</b></span>
+            <button class="btn btn--ghost" id="planning-buy-cigs" style="flex:0;padding:0 calc(var(--r)*14);height:calc(var(--r)*36);font-size:calc(var(--r)*13)">Купить пачку</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <footer class="screen-footer">
+      <button class="btn btn--primary btn--large" id="btn-start-work">Начать рабочий день</button>
+    </footer>
+  </div>
+
+  <!-- ── WORK ──────────────────────────────────────────────── -->
+  <div data-screen="work">
+    <!-- Beat flash — E: subtle background pulse on beat (pointer-events:none) -->
+    <div class="work-beat-flash" id="work-beat-flash"></div>
+    <header class="screen-header">
+      <span class="screen-header__title">Рабочий день</span>
+      <span class="screen-header__day" id="work-day-label">День 1</span>
+      <span class="screen-header__hour" id="work-hour">9:00</span>
+      <button class="vol-btn" aria-label="Громкость">🔊</button>
+    </header>
+
+    <div class="screen-body">
+
+      <!-- Day timer bar -->
+      <div class="card day-timer">
+        <div class="day-timer__row">
+          <span class="day-timer__label">Прогресс дня</span>
+          <span class="day-timer__time" id="work-time-label">9:00 → 18:00</span>
+        </div>
+        <div class="progress-wrap">
+          <div class="progress-bar progress-bar--day" id="work-day-progress" style="width:0%"></div>
+        </div>
+      </div>
+
+      <!-- Stats row -->
+      <div class="work-status-bar">
+        <div class="stat-pill">
+          <span class="stat-pill__label">💰 Заработано</span>
+          <span class="stat-pill__value" id="work-earned">0₽</span>
+        </div>
+        <div class="stat-pill">
+          <span class="stat-pill__label">✅ Выполнено</span>
+          <span class="stat-pill__value" id="work-completed">0</span>
+        </div>
+      </div>
+
+      <!-- Stress dual bar -->
+      <div class="card stress-dual">
+        <div class="stress-dual__row">
+          <span class="stress-dual__label">Стресс</span>
+          <div class="progress-wrap" style="flex:1">
+            <div class="progress-bar progress-bar--stress" id="stress-bar-curr" style="width:0%"></div>
+          </div>
+          <span class="stress-dual__value" id="stress-val-curr">0</span>
+        </div>
+        <div class="stress-dual__row">
+          <span class="stress-dual__label">Накопленный</span>
+          <div class="progress-wrap" style="flex:1">
+            <div class="progress-bar" id="stress-bar-acc" style="width:0%;background:var(--clr-stress-acc)"></div>
+          </div>
+          <span class="stress-dual__value" id="stress-val-acc">0</span>
+        </div>
+      </div>
+
+      <!-- Active order -->
+      <div class="card active-order" id="active-order-card" style="display:none">
+        <div class="active-order__title" id="active-order-title">—</div>
+        <div class="active-order__gens" id="active-order-gens">Генераций: 0 / 0</div>
+        <div class="progress-wrap">
+          <div class="progress-bar progress-bar--accent" id="active-order-progress" style="width:0%"></div>
+        </div>
+      </div>
+
+      <!-- Order pool -->
+      <div>
+        <p class="section-label" style="margin-bottom:calc(var(--r)*8)">Заказы</p>
+        <div class="order-pool" id="order-pool">
+          <span style="color:var(--clr-text-muted);font-size:calc(var(--r)*13)">Нет заказов</span>
+        </div>
+      </div>
+
+      <!-- Autogen ticker -->
+      <div class="autogen-ticker" id="autogen-ticker" style="display:none">
+        🤖 Автоген: <b id="autogen-count">0</b> генераций за день
+      </div>
+
+    </div>
+
+    <footer class="screen-footer screen-footer--work">
+      <!-- Rhythm combo bar — sits directly above the generate button -->
+      <div class="rhythm-bar" id="rhythm-bar" style="display:none">
+        <div class="rhythm-bar__combo">
+          <span class="rhythm-bar__label">РИТМ — выбирай в такт</span>
+          <span class="rhythm-bar__combo-count" id="combo-count">×0</span>
+          <span class="rhythm-bar__combo-val" id="rhythm-combo-val">×1.0</span>
+        </div>
+        <!-- Sinusoidal pendulum: indicator is at centre exactly on each beat -->
+        <div class="rhythm-metro" id="rhythm-metro">
+          <div class="rhythm-metro__indicator" id="rhythm-metro-indicator"></div>
+          <div class="rhythm-metro__center"></div>
+        </div>
+        <div class="rhythm-bar__track">
+          <div class="rhythm-bar__fill" id="rhythm-bar-fill" style="width:0%"></div>
+        </div>
+        <!-- Hit quality toast -->
+        <div class="rhythm-toast" id="rhythm-toast"></div>
+      </div>
+      <div class="work-gen-zone" id="work-gen-zone">
+        <button class="btn btn--generate" id="btn-generate">⚡ Генерация</button>
+      </div>
+      <div class="work-secondary-btns">
+        <button class="btn btn--smoke btn--ghost" id="btn-smoke">🚬 Перекур</button>
+        <button class="btn btn--danger" id="btn-end-work">Завершить день</button>
+      </div>
+    </footer>
+  </div>
+
+  <!-- ── RESULTS ───────────────────────────────────────────── -->
+  <div data-screen="results">
+    <header class="screen-header">
+      <span class="screen-header__title">Итоги дня</span>
+      <span class="screen-header__day" id="results-day-label">День 1</span>
+      <button class="vol-btn" aria-label="Громкость">🔊</button>
+    </header>
+
+    <div class="screen-body">
+
+      <!-- Level up banner (hidden by default) -->
+      <div class="levelup-banner" id="levelup-banner">
+        <span class="levelup-banner__icon">⭐</span>
+        <div>
+          <div class="levelup-banner__text">Новый уровень!</div>
+          <div class="levelup-banner__level" id="levelup-value">Уровень 2</div>
+        </div>
+      </div>
+
+      <!-- Stats grid -->
+      <div class="results-grid">
+        <div class="result-stat result-stat--earned">
+          <span class="result-stat__label">💰 Заработано</span>
+          <span class="result-stat__value" id="results-earned">0₽</span>
+        </div>
+        <div class="result-stat result-stat--xp">
+          <span class="result-stat__label">⭐ Опыт</span>
+          <span class="result-stat__value" id="results-xp">+0</span>
+        </div>
+        <div class="result-stat">
+          <span class="result-stat__label">✅ Выполнено</span>
+          <span class="result-stat__value" id="results-completed">0</span>
+        </div>
+        <div class="result-stat result-stat--fail">
+          <span class="result-stat__label">❌ Провалено</span>
+          <span class="result-stat__value" id="results-failed">0</span>
+        </div>
+      </div>
+
+      <!-- Autogen stat -->
+      <div class="card" style="display:flex;align-items:center;gap:calc(var(--r)*10)" id="results-autogen-row">
+        <span style="font-size:calc(var(--r)*22)">🤖</span>
+        <div>
+          <div style="font-size:calc(var(--r)*13);color:var(--clr-text-muted)">Агент сделал генераций</div>
+          <div style="font-size:calc(var(--r)*20);font-weight:700" id="results-autogen">0</div>
+        </div>
+      </div>
+
+      <!-- Stress graph -->
+      <div>
+        <p class="section-label" style="margin-bottom:calc(var(--r)*8)">График стресса</p>
+        <div class="stress-graph-wrap">
+          <svg id="stress-graph-svg" viewBox="0 0 100 40" preserveAspectRatio="none">
+            <polyline class="stress-graph__line-curr" id="stress-line-curr" points=""/>
+            <polyline class="stress-graph__line-acc"  id="stress-line-acc"  points=""/>
+          </svg>
+          <div class="stress-graph__legend">
+            <div class="stress-graph__leg-item">
+              <div class="stress-graph__leg-swatch" style="background:var(--clr-stress-curr)"></div>
+              <span>Текущий</span>
+            </div>
+            <div class="stress-graph__leg-item">
+              <div class="stress-graph__leg-swatch" style="background:var(--clr-stress-acc)"></div>
+              <span>Накопленный</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Accumulated stress -->
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <span style="color:var(--clr-text-muted);font-size:calc(var(--r)*13)">Накопленный стресс</span>
+          <span style="font-weight:700;color:var(--clr-danger)" id="results-acc-stress">0</span>
+        </div>
+        <div class="progress-wrap" style="margin-top:calc(var(--r)*8)">
+          <div class="progress-bar" id="results-acc-bar" style="width:0%;background:var(--clr-danger)"></div>
+        </div>
+      </div>
+
+    </div>
+
+    <footer class="screen-footer">
+      <button class="btn btn--success btn--large" id="btn-to-rest">Получить награду →</button>
+    </footer>
+  </div>
+
+  <!-- ── REST ──────────────────────────────────────────────── -->
+  <div data-screen="rest">
+    <header class="screen-header">
+      <span class="screen-header__title">Вечер</span>
+      <span class="screen-header__day" id="rest-day-label">День 1</span>
+      <span class="screen-header__hour" id="rest-hour">18:00</span>
+      <button class="vol-btn" aria-label="Громкость">🔊</button>
+    </header>
+
+    <!-- Room — main visual area -->
+    <div class="rest-room" id="rest-room">
+      <!-- Scene: square container sized to image aspect ratio (512×512).
+           Implements CSS "contain" — fills the smaller of width/height,
+           so the background never clips on any screen size. -->
+      <div class="rest-scene" id="rest-scene">
+
+      <!-- PNG overlay layers (driven by flicker.js) -->
+      <div class="rest-layer rest-layer--monitors"      id="rest-layer-monitors"></div>
+      <div class="rest-layer rest-layer--skill-monitor" id="rest-layer-skill-monitor"></div>
+      <div class="rest-layer rest-layer--lamp-shadows"  id="rest-layer-lamp-shadows"></div>
+      <div class="rest-layer rest-layer--window-city"   id="rest-layer-window-city"></div>
+
+      <!-- Quick action pills -->
+      <div class="rest-quick-strip" id="rest-quick-strip">
+        <!-- injected by rest.js -->
+      </div>
+
+      <!--
+        Interactive zones — positioned as % of .rest-scene (= % of image).
+        Red zone  = main monitor desk  → Магазин
+        Blue zone = bottom-left drawers → Колода
+        Green zone= retro monitor right → Навыки
+      -->
+
+      <!-- Zone: Магазин (main monitor + desk) -->
+      <button class="rest-zone" id="hotspot-shop" data-hotspot="shop"
+              style="left:8%;top:36%;width:33%;height:30%">
+        <span class="rest-zone__label">Магазин</span>
+        <span class="rest-hotspot__dot" id="hotspot-dot-shop"></span>
+      </button>
+
+      <!-- Zone: Колода (bottom-left drawers) -->
+      <button class="rest-zone" id="hotspot-deck" data-hotspot="deck"
+              style="left:2%;top:65%;width:19%;height:19%">
+        <span class="rest-zone__label">Колода</span>
+        <span class="rest-hotspot__dot" id="hotspot-dot-deck"></span>
+      </button>
+
+      <!-- Zone: Навыки (retro monitor right side) -->
+      <button class="rest-zone" id="hotspot-skills" data-hotspot="skills"
+              style="left:65%;top:48%;width:19%;height:22%">
+        <span class="rest-zone__label">Навыки</span>
+        <span class="rest-hotspot__dot" id="hotspot-dot-skills"></span>
+      </button>
+
+      <!-- Hours remaining badge -->
+      <div class="rest-hours-badge">
+        <span>⏰</span><span id="rest-hours-left">6.0ч</span>
+      </div>
+
+      </div><!-- /.rest-scene -->
+    </div>
+
+    <!-- Outside activities strip -->
+    <div class="rest-outside-section">
+      <span class="rest-outside-label">🚪 Выйти из дома</span>
+      <div class="rest-outside-list" id="rest-outside-list">
+        <!-- injected by rest.js -->
+      </div>
+    </div>
+
+    <!-- Outside activity popup (bottom sheet) -->
+    <div class="rest-outside-popup" id="rest-outside-popup">
+      <div class="rest-outside-popup__backdrop" id="rest-popup-backdrop"></div>
+      <div class="rest-outside-popup__sheet">
+        <div class="rest-outside-popup__icon" id="rest-popup-icon"></div>
+        <div class="rest-outside-popup__title" id="rest-popup-title"></div>
+        <div class="rest-outside-popup__story" id="rest-popup-story"></div>
+        <div class="rest-outside-popup__effects" id="rest-popup-effects"></div>
+        <div class="rest-outside-popup__cost" id="rest-popup-cost"></div>
+        <div class="rest-outside-popup__actions">
+          <button class="btn btn--ghost" id="rest-popup-cancel">Отмена</button>
+          <button class="btn btn--primary" id="rest-popup-confirm">Пойти</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Generic bottom sheet (deck / shop) -->
+    <div class="rest-sheet" id="rest-sheet">
+      <div class="rest-sheet__backdrop" id="rest-sheet-backdrop"></div>
+      <div class="rest-sheet__panel">
+        <div class="rest-sheet__header">
+          <span class="rest-sheet__title" id="rest-sheet-title"></span>
+          <button class="rest-sheet__close" id="rest-sheet-close">✕</button>
+        </div>
+        <div class="rest-sheet__body" id="rest-sheet-body"></div>
+      </div>
+    </div>
+
+    <footer class="screen-footer">
+      <button class="btn btn--primary btn--large" id="btn-next-day">Начать новый день →</button>
+    </footer>
+  </div>
+
+  <!-- ── Offline agent banner ──────────────────────────────── -->
+  <div class="offline-banner" id="offline-banner">
+    <span class="offline-banner__icon">🤖</span>
+    <span class="offline-banner__text" id="offline-banner-text">Агент работал пока вас не было</span>
+    <span class="offline-banner__close" id="offline-banner-close">✕</span>
+  </div>
+
+</div>
+
+<!-- ── VOLUME PANEL (shared, appended to #app) ────────────── -->
+<div class="vol-panel" id="vol-panel" hidden>
+  <div class="vol-panel__inner">
+    <span class="vol-panel__label">🔊 Громкость музыки</span>
+    <div class="vol-panel__row">
+      <input class="vol-slider" id="vol-slider" type="range" min="0" max="100" step="1" value="28">
+    </div>
+    <div class="vol-panel__pct" id="vol-pct">28%</div>
+  </div>
+</div>
+
+<script src="src/core/break_infinity.js"></script>
+<script src="data/orders.js"></script>
+<script type="module" src="main.js"></script>
+</body>
+</html>
