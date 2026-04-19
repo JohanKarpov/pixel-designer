@@ -193,7 +193,7 @@ export const state = {
     // ── Planning (Kanban) ──────────────────────────────────────────────────
     orderQueue: [],                // [{templateId, ...}] queue assembled in PLANNING
     consumablePresets: [],         // [{name: string, items: object}] saved loadout presets
-    currentDayFocus: null,         // 'work' | 'research' | 'tools'
+    currentDayFocus: 'work',         // 'work' | 'research' | 'tools'
 
     // ── Card system ────────────────────────────────────────────────────────
     // playerDeck: array of { id, enabled } objects — full card collection

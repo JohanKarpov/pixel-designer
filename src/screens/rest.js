@@ -264,16 +264,28 @@ function _bindHotspots() {
         if (!el) return;
 
         // Boost flicker on hover (desktop) and while finger is down (touch)
-        el.addEventListener('mouseenter', () => setChannelBoost(channel, true));
-        el.addEventListener('mouseleave', () => setChannelBoost(channel, false));
+        const _deckHover = id === 'hotspot-deck';
+        el.addEventListener('mouseenter', () => {
+            setChannelBoost(channel, true);
+            if (_deckHover) _scene?.classList.add('rest-scene--skills-hover');
+        });
+        el.addEventListener('mouseleave', () => {
+            setChannelBoost(channel, false);
+            if (_deckHover) _scene?.classList.remove('rest-scene--skills-hover');
+        });
 
         el.addEventListener('touchstart', () => {
             el.classList.add('rest-zone--active');
             setChannelBoost(channel, true);
+            if (_deckHover) _scene?.classList.add('rest-scene--skills-hover');
         }, { passive: true });
         const _unboost = () => {
-            el.classList.remove('rest-zone--active');
-            setChannelBoost(channel, false);
+            // Linger 150ms before removing visual
+            setTimeout(() => {
+                el.classList.remove('rest-zone--active');
+                setChannelBoost(channel, false);
+                if (_deckHover) _scene?.classList.remove('rest-scene--skills-hover');
+            }, 150);
         };
         el.addEventListener('touchend',    _unboost);
         el.addEventListener('touchcancel', _unboost);

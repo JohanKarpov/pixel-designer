@@ -6,6 +6,9 @@
 
 const CACHE_NAME = 'pixel-designer-v1';
 
+// On localhost, skip all caching — always fetch fresh files
+const IS_DEV = self.location.hostname === 'localhost' || self.location.hostname === '127.0.0.1';
+
 // Critical assets to cache immediately on SW install
 const PRECACHE_URLS = [
     './',
@@ -43,7 +46,8 @@ const PRECACHE_URLS = [
 
 // ── Install: precache critical files ─────────────────────────────────────────
 self.addEventListener('install', event => {
-    self.skipWaiting(); // Take control immediately
+    self.skipWaiting();
+    if (IS_DEV) return; // Skip precache on localhost
     event.waitUntil(
         caches.open(CACHE_NAME).then(async cache => {
             for (const url of PRECACHE_URLS) {
@@ -74,6 +78,8 @@ self.addEventListener('fetch', event => {
     if (event.request.method !== 'GET') return;
     // Skip cross-origin (Telegram SDK, analytics, etc.)
     if (!event.request.url.startsWith(self.location.origin)) return;
+    // On localhost, always fetch fresh — no caching
+    if (IS_DEV) return;
 
     event.respondWith(
         caches.match(event.request).then(cached => {

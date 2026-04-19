@@ -20,6 +20,7 @@ import { onEnterWork, onLeaveWork, onOrdersChanged, onStateChanged } from './src
 import { onEnterResults }           from './src/screens/results.js';
 import { onEnterRest, onLeaveRest }  from './src/screens/rest.js';
 import { playBgm, stopBgm, setBgmVolume, getBgmVolume } from './src/core/bgm.js';
+import { setRhythmVolume }           from './src/core/rhythm.js';
 import { preloadAssets }            from './src/core/preload.js';
 
 // ── Service Worker ────────────────────────────────────────────────────
@@ -84,7 +85,9 @@ function _onPhaseChange(phase, payload) {
     }
 
     showScreen(phase);
-    playBgm(phase);
+    // Only change BGM when transitioning to/from work screen.
+    // Between non-work screens, the current track keeps playing.
+    if (phase === 'work' || _prevPhase === 'work') playBgm(phase);
     _prevPhase = phase;
 
     // Enter hooks
@@ -142,6 +145,8 @@ if (_phase === 'rest' || _phase === 'results') {
 }
 
 showScreen(_phase);
+// Start BGM on initial load (work screen is handled by rhythm.js)
+if (_phase !== 'work') playBgm(_phase);
 
 // Enter hook for restored phase
 if (_phase === 'planning')      onEnterPlanning();
@@ -182,10 +187,19 @@ else if (_phase === 'rest')     onEnterRest();
         }
     });
 
+    const _updateVolIcon = (v) => {
+        document.querySelectorAll('.vol-btn').forEach(btn => {
+            btn.textContent = v === 0 ? '🔇' : '🔊';
+        });
+    };
+    _updateVolIcon(init);
+
     slider.addEventListener('input', () => {
         const v = parseInt(slider.value, 10);
         pct.textContent = `${v}%`;
         setBgmVolume(v / 100);
+        setRhythmVolume(v / 100);
+        _updateVolIcon(v);
     });
 })();
 

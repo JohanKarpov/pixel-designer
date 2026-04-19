@@ -4,10 +4,13 @@
 //   initRhythm()          — preload audio (call once)
 //   startRhythm()         — begin playback + scoring
 //   stopRhythm()          — pause playback
+//   setRhythmVolume(v)    — update gain live (0–1)
 //   checkBeatHit()        — call on any player input; returns hit quality
 //   getRhythmMultiplier() — current payout multiplier based on combo
 //   getRhythmCombo()      — current combo value (float)
 //   onRhythmComboChange() — register listener for combo/multiplier updates
+
+import { getBgmVolume } from './bgm.js';
 
 const BPM         = 120;
 const BEAT_MS     = 60000 / BPM;     // 500 ms
@@ -79,7 +82,7 @@ export function startRhythm() {
     if (_audioCtx.state === 'suspended') _audioCtx.resume();
 
     _gainNode = _audioCtx.createGain();
-    _gainNode.gain.value = 0.20;
+    _gainNode.gain.value = getBgmVolume();
     _gainNode.connect(_audioCtx.destination);
 
     _source = _audioCtx.createBufferSource();
@@ -114,6 +117,16 @@ export function stopRhythm() {
     if (_decayTimer) {
         clearInterval(_decayTimer);
         _decayTimer = null;
+    }
+}
+
+/**
+ * Update the live gain volume (0–1). Called when global volume slider changes.
+ */
+export function setRhythmVolume(v) {
+    const clamped = Math.max(0, Math.min(1, v));
+    if (_gainNode && _audioCtx) {
+        _gainNode.gain.setTargetAtTime(clamped, _audioCtx.currentTime, 0.05);
     }
 }
 

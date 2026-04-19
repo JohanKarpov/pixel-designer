@@ -49,7 +49,9 @@ export function onEnterPlanning() {
 // ─────────────────────────────────────────────────────────────
 
 function _render() {
-    _dayLabel.textContent = `День ${state.dayCount || 1}`;
+    const _DOW = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
+    const _dowIndex = ((state.dayCount || 1) - 1) % 7;
+    _dayLabel.textContent = _DOW[_dowIndex];
     _cigsCount.textContent = state.goods.cigarettes ?? 0;
 
     // Focus buttons
@@ -105,19 +107,33 @@ function _renderKanban() {
     if (hand.length === 0) {
         const empty = document.createElement('div');
         empty.className = 'kanban-empty';
+        empty.style.cssText = 'font-size:calc(var(--r)*12);color:var(--clr-text-muted);padding:calc(var(--r)*8) 0';
         empty.textContent = state.drawPile?.length === 0
-            ? 'Колода исчерпана на сегодня'
-            : 'Нет карт в руке';
+            ? 'Колода исчерпана'
+            : 'Нет карт';
         _poolCol.appendChild(empty);
     } else {
         hand.forEach(card => {
             const affordable = (state.energyResourceMax - usedEnergy) >= card.cost;
-            _poolCol.appendChild(_makeCard(card, 'pool', !affordable));
+            _poolCol.appendChild(_makeCard(card, !affordable));
         });
     }
 
-    // Queue
-    (state.orderQueue || []).forEach(card => _queueCol.appendChild(_makeCard(card, 'queue', false)));
+    // Queue — compact squares
+    const queue = state.orderQueue || [];
+    queue.forEach((card, i) => _queueCol.appendChild(_makeSquare(card, i)));
+
+    // Fill remaining slots with placeholder squares
+    for (let i = queue.length; i < MAX_QUEUE; i++) {
+        const ph = document.createElement('div');
+        ph.className = 'kanban-square kanban-square--placeholder';
+        _queueCol.appendChild(ph);
+    }
+
+    // Start button — dimmed when queue is empty
+    const hasQueue = queue.length > 0;
+    _startBtn.disabled = !hasQueue;
+    _startBtn.classList.toggle('btn--disabled', !hasQueue);
 }
 
 function _renderCombos() {
@@ -157,62 +173,211 @@ function _getPoolItems() {
     return state.currentHand || [];
 }
 
-function _makeCard(card, colType, disabled = false) {
+// ── Card type → emoji icon ──────────────────────────────────
+const CARD_ICON = {
+    task:     '📋',
+    research: '🔬',
+    promo:    '📢',
+    utility:  '⚡',
+};
+// miniGenMode → short badge label
+const MODE_LABEL = {
+    study:    'study',
+    sort:     'sort',
+    standard: 'gen',
+};
+
+/** Resolve color-coding class from card */
+function _colorClass(card) {
+    if (card.tags?.includes('планирование')) return 'planning';
+    if (card.cardType === 'utility')          return 'utility';
+    if (card.miniGenMode === 'study')         return 'study';
+    if (card.miniGenMode === 'sort')          return 'sort';
+    if (card.miniGenMode === 'standard')      return 'gen';
+    return null;
+}
+
+/** Build reward summary line */
+function _rewardStr(card) {
+    const r = card.reward || {};
+    const parts = [];
+    if (r.moneyPerGen)  parts.push(`${r.moneyPerGen}₽/г`);
+    if (r.xpPerGen)     parts.push(`${r.xpPerGen}XP/г`);
+    if (r.xpFlat)       parts.push(`+${r.xpFlat}XP`);
+    if (r.famePerGen)   parts.push(`${r.famePerGen}★/г`);
+    if (r.fameFlat)     parts.push(`+${r.fameFlat}★`);
+    if (card.requiredGenerations > 0) parts.unshift(`${card.requiredGenerations}г`);
+    return parts.join(' · ');
+}
+
+/** Pool card — horizontal compact row */
+function _makeCard(card, disabled = false) {
     const el = document.createElement('div');
     el.className = 'kanban-card';
-    if (disabled)         el.classList.add('kanban-card--disabled');
-    if (card.rarity)      el.classList.add(`kanban-card--${card.rarity}`);
-    if (card.cardType)    el.classList.add(`kanban-card--type-${card.cardType}`);
+    if (disabled) el.classList.add('kanban-card--disabled');
+    const cc = _colorClass(card);
+    if (cc) el.classList.add(`kanban-card--${cc}`);
 
-    // Color coding by miniGenMode / planning tag / utility type
-    if (card.tags?.includes('планирование')) {
-        el.classList.add('kanban-card--planning');
-    } else if (card.cardType === 'utility') {
-        el.classList.add('kanban-card--utility');
-    } else if (card.miniGenMode === 'study') {
-        el.classList.add('kanban-card--study');
-    } else if (card.miniGenMode === 'sort') {
-        el.classList.add('kanban-card--sort');
-    }
-    el.draggable = !disabled;
-    el.dataset.id    = card.id ?? Math.random();
-    el.dataset.col   = colType;
+    el.dataset.id  = card.id ?? Math.random();
+    el.dataset.col = 'pool';
 
-    // Build reward summary line
-    const r = card.reward || {};
-    const rewardParts = [];
-    if (r.moneyPerGen)  rewardParts.push(`${r.moneyPerGen}₽/ген`);
-    if (r.xpPerGen)     rewardParts.push(`${r.xpPerGen} XP/ген`);
-    if (r.xpFlat)       rewardParts.push(`+${r.xpFlat} XP`);
-    if (r.famePerGen)   rewardParts.push(`${r.famePerGen} ★/ген`);
-    if (r.fameFlat)     rewardParts.push(`+${r.fameFlat} ★`);
-    const rewardStr = rewardParts.join('  ') || '';
+    const icon      = CARD_ICON[card.cardType] || '📋';
+    const modeBadge = MODE_LABEL[card.miniGenMode]
+        ? `<span class="kanban-card__mode">${MODE_LABEL[card.miniGenMode]}</span>` : '';
 
-    // Mode badge
-    const modeBadge = card.miniGenMode && card.miniGenMode !== 'standard'
-        ? `<span class="kanban-card__mode">${card.miniGenMode}</span>` : '';
+    // Show description only for effect/modifier cards (utility with effect, no generations)
+    const showDesc = card.effect && !card.requiredGenerations && card.description;
+    const descLine = showDesc
+        ? `<span class="kanban-card__desc">${card.description}</span>` : '';
 
     el.innerHTML =
-        `<div class="kanban-card__header">
-            <span class="kanban-card__title">${card.title}</span>
-            ${modeBadge}
-        </div>` +
-        `<div class="kanban-card__desc">${card.description || ''}</div>` +
-        `<div class="kanban-card__meta">
-            <span class="kanban-card__gens">${card.requiredGenerations > 0 ? card.requiredGenerations + ' ген.' : ''}</span>
-            <span class="kanban-card__reward">${rewardStr}</span>
-            <span class="kanban-card__cost">⚡${card.cost}</span>
-        </div>`;
-
-    // Drag & drop (desktop) — only for non-disabled cards
-    if (!disabled) {
-        el.addEventListener('dragstart', _onDragStart);
-        el.addEventListener('dragend',   _onDragEnd);
-        el.addEventListener('touchstart', _onTouchStart, { passive: true });
-    }
+        `<span class="kanban-card__icon">${icon}</span>` +
+        `<span class="kanban-card__body">` +
+            `<span class="kanban-card__title">${card.title}</span>` +
+            (descLine || `<span class="kanban-card__reward">${_rewardStr(card)}</span>`) +
+        `</span>` +
+        (modeBadge ? modeBadge : '') +
+        `<span class="kanban-card__cost">⚡${card.cost}</span>`;
 
     el._itemData = card;
+
+    if (!disabled) {
+        _bindCardInteraction(el, card);
+    }
     return el;
+}
+
+/** Queue compact square */
+function _makeSquare(card, index) {
+    const el = document.createElement('div');
+    el.className = 'kanban-square';
+    const cc = _colorClass(card);
+    if (cc) el.classList.add(`kanban-square--${cc}`);
+
+    el.dataset.id  = card.id ?? Math.random();
+    el.dataset.col = 'queue';
+    el.dataset.idx = index;
+
+    const icon = CARD_ICON[card.cardType] || '📋';
+    el.innerHTML =
+        `<span class="kanban-square__icon">${icon}</span>` +
+        `<span class="kanban-square__cost">⚡${card.cost}</span>`;
+
+    el._itemData = card;
+    el._index    = index;
+
+    // Tap → remove from queue
+    el.addEventListener('click', () => {
+        _removeFromQueue(card);
+        _renderKanban();
+        _renderCombos();
+        _renderEnergyCounter();
+        _bindDragTargets();
+    });
+
+    // Long-press → drag
+    _bindSquareLongPress(el, card);
+    return el;
+}
+
+// ── Tap-to-add + long-press-drag for pool cards ──────────────
+const LONG_PRESS_MS = 220;
+
+function _bindCardInteraction(el, card) {
+    let _pressTimer = null;
+    let _dragging   = false;
+
+    const startLongPress = (e) => {
+        _dragging = false;
+        const capturedE = e; // capture before async — currentTarget becomes null in setTimeout
+        _pressTimer = setTimeout(() => {
+            _dragging = true;
+            el.setAttribute('draggable', 'true');
+            el.classList.add('kanban-card--hold');
+            _onTouchStart(capturedE, el);
+        }, LONG_PRESS_MS);
+    };
+
+    const cancelLongPress = () => {
+        clearTimeout(_pressTimer);
+        _pressTimer = null;
+    };
+
+    el.addEventListener('touchstart', startLongPress, { passive: true });
+    el.addEventListener('touchend', (e) => {
+        cancelLongPress();
+        if (!_dragging) {
+            // Tap: add to queue
+            e.preventDefault();
+            _addToQueue(card);
+            _renderKanban();
+            _renderCombos();
+            _renderEnergyCounter();
+            _bindDragTargets();
+        }
+        _dragging = false;
+        el.setAttribute('draggable', 'false');
+        el.classList.remove('kanban-card--hold');
+    });
+    el.addEventListener('touchcancel', () => {
+        cancelLongPress();
+        _dragging = false;
+        el.setAttribute('draggable', 'false');
+        el.classList.remove('kanban-card--hold');
+    });
+    el.addEventListener('touchmove', () => {
+        // If finger moves during long press, cancel press and switch to drag
+        if (_pressTimer) {
+            clearTimeout(_pressTimer);
+            _pressTimer = null;
+            _dragging = true;
+            el.setAttribute('draggable', 'true');
+        }
+    }, { passive: true });
+
+    // Desktop click
+    el.addEventListener('click', () => {
+        if (!_dragging) {
+            _addToQueue(card);
+            _renderKanban();
+            _renderCombos();
+            _renderEnergyCounter();
+            _bindDragTargets();
+        }
+    });
+
+    // Desktop drag (initiated by mouse)
+    el.addEventListener('dragstart', _onDragStart);
+    el.addEventListener('dragend',   _onDragEnd);
+}
+
+function _bindSquareLongPress(el, card) {
+    let _pressTimer = null;
+
+    el.addEventListener('touchstart', (e) => {
+        // Capture touch reference before setTimeout (currentTarget becomes null async)
+        const capturedE = e;
+        _pressTimer = setTimeout(() => {
+            el.setAttribute('draggable', 'true');
+            el.classList.add('kanban-square--hold');
+            _onTouchStart(capturedE, el);
+        }, LONG_PRESS_MS);
+    }, { passive: true });
+    el.addEventListener('touchend', () => {
+        clearTimeout(_pressTimer);
+        _pressTimer = null;
+        el.setAttribute('draggable', 'false');
+        el.classList.remove('kanban-square--hold');
+    });
+    el.addEventListener('touchcancel', () => {
+        clearTimeout(_pressTimer);
+        _pressTimer = null;
+        el.setAttribute('draggable', 'false');
+        el.classList.remove('kanban-square--hold');
+    });
+
+    el.addEventListener('dragstart', _onDragStart);
+    el.addEventListener('dragend',   _onDragEnd);
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -223,12 +388,15 @@ let _dragging = null;
 
 function _onDragStart(e) {
     _dragging = e.currentTarget;
-    _dragging.classList.add('kanban-card--dragging');
+    const cls = _dragging.classList.contains('kanban-square') ? 'kanban-square--dragging' : 'kanban-card--dragging';
+    _dragging.classList.add(cls);
     e.dataTransfer.effectAllowed = 'move';
 }
 
 function _onDragEnd() {
-    if (_dragging) _dragging.classList.remove('kanban-card--dragging');
+    if (_dragging) {
+        _dragging.classList.remove('kanban-card--dragging', 'kanban-square--dragging');
+    }
     _dragging = null;
     document.querySelectorAll('.kanban__col').forEach(c => c.classList.remove('kanban__col--drop-target'));
 }
@@ -252,7 +420,7 @@ function _bindDragTargets() {
             else                   _removeFromQueue(_dragging._itemData);
             _renderKanban();
             _renderCombos();
-            _renderIPCounter();
+            _renderEnergyCounter();
             _bindDragTargets();
         });
     });
@@ -265,15 +433,30 @@ function _bindDragTargets() {
 let _touchCard = null;
 let _touchClone = null;
 
-function _onTouchStart(e) {
-    _touchCard = e.currentTarget;
+function _onTouchStart(e, overrideEl) {
+    _touchCard = overrideEl || e.currentTarget;
     const touch = e.touches[0];
     const rect  = _touchCard.getBoundingClientRect();
 
-    _touchClone = _touchCard.cloneNode(true);
+    // Clone as compact square (matches queue style)
+    const squareSize = Math.round(rect.height * 1.1);
+    _touchClone = document.createElement('div');
+    _touchClone.className = 'kanban-square kanban-drag-clone';
+    // Copy color class from original
+    ['study','sort','planning','utility','gen'].forEach(c => {
+        if (_touchCard.classList.contains(`kanban-card--${c}`) ||
+            _touchCard.classList.contains(`kanban-square--${c}`)) {
+            _touchClone.classList.add(`kanban-square--${c}`);
+        }
+    });
+    const icon = _touchCard.querySelector('.kanban-card__icon, .kanban-square__icon')?.textContent || '📋';
+    const cost = _touchCard.querySelector('.kanban-card__cost, .kanban-square__cost')?.textContent || '';
+    _touchClone.innerHTML =
+        `<span class="kanban-square__icon">${icon}</span>` +
+        `<span class="kanban-square__cost">${cost}</span>`;
     _touchClone.style.cssText =
-        `position:fixed;z-index:9999;width:${rect.width}px;pointer-events:none;` +
-        `opacity:0.85;left:${rect.left}px;top:${rect.top}px;`;
+        `position:fixed;z-index:9999;width:${squareSize}px;height:${squareSize}px;pointer-events:none;` +
+        `opacity:0.9;left:${touch.clientX - squareSize/2}px;top:${touch.clientY - squareSize/2}px;`;
     document.body.appendChild(_touchClone);
     _touchCard.classList.add('kanban-card--dragging');
 
@@ -287,9 +470,8 @@ function _onTouchMove(e) {
     const touch = e.touches[0];
     if (_touchClone) {
         _touchClone.style.left = `${touch.clientX - _touchClone.offsetWidth / 2}px`;
-        _touchClone.style.top  = `${touch.clientY - 20}px`;
+        _touchClone.style.top  = `${touch.clientY - _touchClone.offsetHeight / 2}px`;
     }
-    // Highlight target column
     const el = document.elementFromPoint(touch.clientX, touch.clientY);
     const col = el?.closest('.kanban__col');
     document.querySelectorAll('.kanban__col').forEach(c => c.classList.toggle('kanban__col--drop-target', c === col));
@@ -309,7 +491,7 @@ function _onTouchEnd(e) {
     const itemData = _touchCard._itemData;
 
     document.querySelectorAll('.kanban__col').forEach(c => c.classList.remove('kanban__col--drop-target'));
-    _touchCard.classList.remove('kanban-card--dragging');
+    _touchCard.classList.remove('kanban-card--dragging', 'kanban-square--dragging');
     _touchCard = null;
 
     if (col && fromCol !== toCol && itemData) {
@@ -317,7 +499,7 @@ function _onTouchEnd(e) {
         else                   _removeFromQueue(itemData);
         _renderKanban();
         _renderCombos();
-        _renderIPCounter();
+        _renderEnergyCounter();
         _bindDragTargets();
     }
 }
@@ -326,7 +508,7 @@ function _onTouchCancel() {
     document.removeEventListener('touchmove', _onTouchMove);
     _touchClone?.remove();
     _touchClone = null;
-    _touchCard?.classList.remove('kanban-card--dragging');
+    _touchCard?.classList.remove('kanban-card--dragging', 'kanban-square--dragging');
     _touchCard = null;
     document.querySelectorAll('.kanban__col').forEach(c => c.classList.remove('kanban__col--drop-target'));
 }
@@ -355,8 +537,9 @@ function _addToQueue(card) {
     // Handle utility effects that fire immediately
     if (card.effect === 'draw_2') {
         drawCards(2);
-        // Remove the utility card from the queue after triggering
-        state.orderQueue = state.orderQueue.filter(q => q.id !== card.id);
+        // Remove the utility card from the queue AND hand after triggering
+        state.orderQueue  = state.orderQueue.filter(q => q.id !== card.id);
+        state.currentHand = (state.currentHand || []).filter(c => c.id !== card.id);
     }
 
     _recomputeCombos();

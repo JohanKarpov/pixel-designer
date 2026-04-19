@@ -20,7 +20,7 @@ export const CARD_DEFINITIONS = [
 
     {
         id: 'contract_work',
-        title: 'Работа по контракту',
+        title: 'По контракту',
         description: 'Выполни 10 генераций для клиента',
         tags: ['задача', 'генерации', 'контракт', 'реализация', 'концепты'],
         cardType: 'task',
@@ -34,7 +34,7 @@ export const CARD_DEFINITIONS = [
     },
     {
         id: 'moodboard',
-        title: 'Генерация мудборда',
+        title: 'Мудборд',
         description: 'Выполни 25 генераций концептов',
         tags: ['задача', 'генерации', 'фриланс', 'концепты'],
         cardType: 'task',
@@ -48,7 +48,7 @@ export const CARD_DEFINITIONS = [
     },
     {
         id: 'storyboard',
-        title: 'Сборка раскадровки',
+        title: 'Раскадровка',
         description: 'Выполни 7 генераций для раскадровки',
         tags: ['задача', 'генерации', 'фриланс', 'реализация', 'концепты'],
         cardType: 'task',
@@ -65,7 +65,7 @@ export const CARD_DEFINITIONS = [
 
     {
         id: 'prompt_research',
-        title: 'Исследование промтов',
+        title: 'Ресёрч промтов',
         description: 'Изучи 5 генераций — найди нужный тег',
         tags: ['задача', 'генерации', 'ресерч', 'ИИ-модели', 'энергия'],
         cardType: 'research',
@@ -163,7 +163,7 @@ export const CARD_DEFINITIONS = [
     {
         id: 'focus_boost',
         title: 'Состояние потока',
-        description: '+20% к наградам следующей задачи в очереди',
+        description: '+20% к награде след. задачи',
         tags: ['модификатор', 'концентрация'],
         cardType: 'utility',
         miniGenMode: null,

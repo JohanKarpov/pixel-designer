@@ -66,7 +66,7 @@
             <!-- order cards injected by planning.js -->
           </div>
           <div class="kanban__col" id="kanban-queue" data-col="queue">
-            <span class="kanban__col-title">На день (макс 5)</span>
+            <span class="kanban__col-title">Очередь</span>
             <!-- queued cards injected by planning.js -->
           </div>
         </div>
@@ -305,6 +305,7 @@
       <div class="rest-layer rest-layer--skill-monitor" id="rest-layer-skill-monitor"></div>
       <div class="rest-layer rest-layer--lamp-shadows"  id="rest-layer-lamp-shadows"></div>
       <div class="rest-layer rest-layer--window-city"   id="rest-layer-window-city"></div>
+      <div class="rest-layer rest-layer--desk-deck"     id="rest-layer-desk-deck"></div>
 
       <!-- Quick action pills -->
       <div class="rest-quick-strip" id="rest-quick-strip">
@@ -321,22 +322,19 @@
       <!-- Zone: Магазин (main monitor + desk) -->
       <button class="rest-zone" id="hotspot-shop" data-hotspot="shop"
               style="left:8%;top:36%;width:33%;height:30%">
-        <span class="rest-zone__label">Магазин</span>
-        <span class="rest-hotspot__dot" id="hotspot-dot-shop"></span>
+        <span class="rest-zone__label">Магазин<span class="rest-hotspot__dot" id="hotspot-dot-shop"></span></span>
       </button>
 
       <!-- Zone: Колода (bottom-left drawers) -->
       <button class="rest-zone" id="hotspot-deck" data-hotspot="deck"
               style="left:2%;top:65%;width:19%;height:19%">
-        <span class="rest-zone__label">Колода</span>
-        <span class="rest-hotspot__dot" id="hotspot-dot-deck"></span>
+        <span class="rest-zone__label">Колода<span class="rest-hotspot__dot" id="hotspot-dot-deck"></span></span>
       </button>
 
       <!-- Zone: Навыки (retro monitor right side) -->
       <button class="rest-zone" id="hotspot-skills" data-hotspot="skills"
               style="left:65%;top:48%;width:19%;height:22%">
-        <span class="rest-zone__label">Навыки</span>
-        <span class="rest-hotspot__dot" id="hotspot-dot-skills"></span>
+        <span class="rest-zone__label">Навыки<span class="rest-hotspot__dot" id="hotspot-dot-skills"></span></span>
       </button>
 
       <!-- Hours remaining badge -->

@@ -119,30 +119,30 @@ html, body {
   display: flex;
   align-items: center;
   gap: calc(var(--r) * 10);
-  padding: calc(var(--r) * 14) calc(var(--r) * 16);
-  padding-top: max(calc(var(--r) * 14), env(safe-area-inset-top));
+  padding: calc(var(--r) * 10) calc(var(--r) * 14);
+  padding-top: max(calc(var(--r) * 10), env(safe-area-inset-top));
   background: var(--clr-surface);
   border-bottom: calc(var(--r) * 1) solid var(--clr-border);
   flex-shrink: 0;
 }
 
 .screen-header__title {
-  font-size: calc(var(--r) * 24);
+  font-size: calc(var(--r) * 20);
   font-weight: 700;
   letter-spacing: 0.02em;
   flex: 1;
 }
 
 .screen-header__day {
-  font-size: calc(var(--r) * 16);
+  font-size: calc(var(--r) * 14);
   color: var(--clr-text-muted);
 }
 
 .screen-header__hour {
-  font-size: calc(var(--r) * 16);
+  font-size: calc(var(--r) * 14);
   font-weight: 600;
   color: var(--clr-accent2);
-  min-width: calc(var(--r) * 44);
+  min-width: calc(var(--r) * 38);
   text-align: right;
 }
 
@@ -247,19 +247,19 @@ html, body {
 
 .screen-body {
   flex: 1;
-  min-height: 0;                        /* prevent flex overflow */
+  min-height: 0;
   overflow-y: auto;
-  -webkit-overflow-scrolling: touch;    /* smooth momentum scroll on iOS */
-  padding: calc(var(--r) * 14) calc(var(--r) * 16);
+  -webkit-overflow-scrolling: touch;
+  padding: calc(var(--r) * 10) calc(var(--r) * 12);
   display: flex;
   flex-direction: column;
-  gap: calc(var(--r) * 12);
+  gap: calc(var(--r) * 8);
 }
 
 .screen-footer {
   flex-shrink: 0;
-  padding: calc(var(--r) * 12) calc(var(--r) * 16);
-  padding-bottom: max(calc(var(--r) * 12), env(safe-area-inset-bottom));
+  padding: calc(var(--r) * 8) calc(var(--r) * 12);
+  padding-bottom: max(calc(var(--r) * 8), env(safe-area-inset-bottom));
   background: var(--clr-surface);
   border-top: calc(var(--r) * 1) solid var(--clr-border);
   display: flex;
@@ -273,11 +273,11 @@ html, body {
   align-items: center;
   justify-content: center;
   gap: calc(var(--r) * 6);
-  height: calc(var(--r) * 48);
-  padding: 0 calc(var(--r) * 20);
+  height: calc(var(--r) * 44);
+  padding: 0 calc(var(--r) * 18);
   border: none;
   border-radius: calc(var(--r) * 12);
-  font-size: calc(var(--r) * 16);
+  font-size: calc(var(--r) * 15);
   font-weight: 600;
   cursor: pointer;
   transition: opacity 120ms, transform 80ms;
@@ -290,15 +290,15 @@ html, body {
 .btn--success  { background: var(--clr-success);  color: #000; flex: 1; }
 .btn--danger   { background: var(--clr-danger);   color: #fff; }
 .btn--ghost    { background: var(--clr-surface2); color: var(--clr-text); flex: 1; }
-.btn--large    { height: calc(var(--r) * 64); font-size: calc(var(--r) * 18); border-radius: calc(var(--r) * 16); }
+.btn--large    { height: calc(var(--r) * 52); font-size: calc(var(--r) * 16); border-radius: calc(var(--r) * 14); }
 
 /* ── Card ─────────────────────────────────────────────────────── */
 
 .card {
   background: var(--clr-surface);
   border: calc(var(--r) * 1) solid var(--clr-border);
-  border-radius: calc(var(--r) * 14);
-  padding: calc(var(--r) * 14) calc(var(--r) * 16);
+  border-radius: calc(var(--r) * 12);
+  padding: calc(var(--r) * 10) calc(var(--r) * 12);
 }
 
 .card__title {
@@ -354,14 +354,14 @@ html, body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: calc(var(--r) * 6);
-  padding: calc(var(--r) * 14) calc(var(--r) * 8);
+  gap: calc(var(--r) * 3);
+  padding: calc(var(--r) * 8) calc(var(--r) * 6);
   background: var(--clr-surface2);
   border: calc(var(--r) * 2) solid var(--clr-border);
-  border-radius: calc(var(--r) * 12);
+  border-radius: calc(var(--r) * 10);
   cursor: pointer;
   transition: border-color 150ms, background 150ms;
-  font-size: calc(var(--r) * 16);
+  font-size: calc(var(--r) * 12);
   font-weight: 600;
   color: var(--clr-text-muted);
   text-align: center;
@@ -373,35 +373,37 @@ html, body {
   color: var(--clr-text);
 }
 
-.focus-btn__icon { font-size: calc(var(--r) * 24); }
-.focus-btn__bonus { font-size: calc(var(--r) * 16); color: var(--clr-success); font-weight: 700; }
+.focus-btn__icon { font-size: calc(var(--r) * 18); }
+.focus-btn__bonus { font-size: calc(var(--r) * 11); color: var(--clr-success); font-weight: 700; }
 
 /* Kanban */
 
 .kanban {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: calc(var(--r) * 10);
+  grid-template-columns: 7fr 3fr;
+  gap: calc(var(--r) * 8);
   min-height: calc(var(--r) * 160);
+  align-items: start;
 }
 
 .kanban__col {
   background: var(--clr-surface2);
   border: calc(var(--r) * 1) solid var(--clr-border);
   border-radius: calc(var(--r) * 12);
-  padding: calc(var(--r) * 10);
+  padding: calc(var(--r) * 8);
   display: flex;
   flex-direction: column;
-  gap: calc(var(--r) * 8);
-  min-height: calc(var(--r) * 120);
+  gap: calc(var(--r) * 6);
+  min-height: calc(var(--r) * 80);
 }
 
 .kanban__col-title {
-  font-size: calc(var(--r) * 16);
+  font-size: calc(var(--r) * 11);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.07em;
   color: var(--clr-text-muted);
+  white-space: nowrap;
 }
 
 .kanban__col--drop-target {
@@ -409,70 +411,184 @@ html, body {
   background: color-mix(in srgb, var(--clr-accent) 8%, var(--clr-surface2));
 }
 
+/* ── Pool card (full-width, compact) ── */
 .kanban-card {
   background: var(--clr-surface);
   border: calc(var(--r) * 1) solid var(--clr-border);
   border-radius: calc(var(--r) * 8);
-  padding: calc(var(--r) * 10) calc(var(--r) * 12);
+  padding: calc(var(--r) * 8) calc(var(--r) * 10);
   cursor: grab;
-  font-size: calc(var(--r) * 16);
+  font-size: calc(var(--r) * 13);
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: calc(var(--r) * 8);
+  touch-action: none;
+  transition: opacity 120ms, transform 80ms;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.kanban-card:active { transform: scale(0.97); }
+.kanban-card--dragging { opacity: 0.3; }
+.kanban-card--disabled { opacity: 0.4; pointer-events: none; }
+
+.kanban-card__icon {
+  font-size: calc(var(--r) * 20);
+  flex-shrink: 0;
+  width: calc(var(--r) * 28);
+  text-align: center;
+}
+
+.kanban-card__body {
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: calc(var(--r) * 4);
+  gap: calc(var(--r) * 2);
+}
+
+.kanban-card__title {
+  font-weight: 700;
+  font-size: calc(var(--r) * 13);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.kanban-card__reward {
+  font-size: calc(var(--r) * 11);
+  color: var(--clr-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.kanban-card__desc {
+  font-size: calc(var(--r) * 11);
+  color: var(--clr-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-style: italic;
+}
+
+.kanban-card__cost {
+  flex-shrink: 0;
+  font-size: calc(var(--r) * 12);
+  font-weight: 700;
+  color: var(--clr-accent2);
+}
+
+.kanban-card__mode {
+  font-size: calc(var(--r) * 10);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: calc(var(--r) * 2) calc(var(--r) * 5);
+  border-radius: calc(var(--r) * 4);
+  border: calc(var(--r) * 1) solid var(--clr-border);
+  color: var(--clr-text-muted);
+  background: var(--clr-surface2);
+  flex-shrink: 0;
+}
+
+/* ── Queue compact square ── */
+.kanban-square {
+  aspect-ratio: 1 / 1;
+  width: 100%;
+  border-radius: calc(var(--r) * 8);
+  border: calc(var(--r) * 2) solid var(--clr-border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: calc(var(--r) * 2);
+  cursor: pointer;
   touch-action: none;
-  transition: opacity 120ms;
+  transition: opacity 120ms, transform 80ms;
+  position: relative;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
 }
-.kanban-card:active { opacity: 0.7; cursor: grabbing; }
-.kanban-card--dragging { opacity: 0.3; }
+.kanban-square:active { transform: scale(0.93); }
+.kanban-square--dragging { opacity: 0.3; }
 
-.kanban-card__title { font-weight: 600; }\n.kanban-card__meta  { font-size: calc(var(--r) * 16); color: var(--clr-text-muted); }\n\n.kanban-card__mode {\n  font-size: calc(var(--r) * 12);\n  font-weight: 700;\n  letter-spacing: 0.06em;\n  text-transform: uppercase;\n  padding: calc(var(--r) * 2) calc(var(--r) * 6);\n  border-radius: calc(var(--r) * 4);\n  border: calc(var(--r) * 1) solid var(--clr-border);\n  color: var(--clr-text-muted);\n  background: var(--clr-surface2);\n}
+.kanban-square__icon {
+  font-size: calc(var(--r) * 22);
+  line-height: 1;
+}
 
-/* Card color coding by miniGenMode / tag */
+.kanban-square__cost {
+  font-size: calc(var(--r) * 11);
+  font-weight: 700;
+  color: var(--clr-accent2);
+  line-height: 1;
+}
 
-/* study — синий: выбор на соответствие тегу */
-.kanban-card--study {
+/* Drop placeholder square */
+.kanban-square--placeholder {
+  border-style: dashed;
+  border-color: rgba(255,255,255,0.12);
+  background: transparent;
+  pointer-events: none;
+}
+
+/* ── Color coding (pool cards + squares) ── */
+
+/* study — синий */
+.kanban-card--study,
+.kanban-square--study {
   border-color: #3a7bd5;
-  background: color-mix(in srgb, #3a7bd5 10%, var(--clr-surface));
+  background: color-mix(in srgb, #3a7bd5 15%, var(--clr-surface));
 }
-.kanban-card--study .kanban-card__title {
-  color: #7ab4ff;
-}
+.kanban-card--study .kanban-card__title { color: #7ab4ff; }
 .kanban-card--study .kanban-card__mode {
   background: color-mix(in srgb, #3a7bd5 25%, var(--clr-surface));
   color: #7ab4ff;
   border-color: #3a7bd5;
 }
 
-/* sort — зелёный: исключи худшее */
-.kanban-card--sort {
+/* sort — зелёный */
+.kanban-card--sort,
+.kanban-square--sort {
   border-color: #2e9e5a;
-  background: color-mix(in srgb, #2e9e5a 10%, var(--clr-surface));
+  background: color-mix(in srgb, #2e9e5a 15%, var(--clr-surface));
 }
-.kanban-card--sort .kanban-card__title {
-  color: #6ddc9a;
-}
+.kanban-card--sort .kanban-card__title { color: #6ddc9a; }
 .kanban-card--sort .kanban-card__mode {
   background: color-mix(in srgb, #2e9e5a 25%, var(--clr-surface));
   color: #6ddc9a;
   border-color: #2e9e5a;
 }
 
-/* planning — жёлтый/белый: карты планирования */
-.kanban-card--planning {
+/* planning — жёлтый */
+.kanban-card--planning,
+.kanban-square--planning {
   border-color: #b8932a;
-  background: color-mix(in srgb, #d4a93a 8%, var(--clr-surface));
+  background: color-mix(in srgb, #d4a93a 12%, var(--clr-surface));
 }
-.kanban-card--planning .kanban-card__title {
-  color: #f0d080;
-}
+.kanban-card--planning .kanban-card__title { color: #f0d080; }
 
-/* utility — белый/серебристый: модификаторы */
-.kanban-card--utility {
+/* utility — серебристый */
+.kanban-card--utility,
+.kanban-square--utility {
   border-color: #888ea8;
-  background: color-mix(in srgb, #b0b8d0 8%, var(--clr-surface));
+  background: color-mix(in srgb, #b0b8d0 12%, var(--clr-surface));
 }
-.kanban-card--utility .kanban-card__title {
-  color: #d0d8f0;
+.kanban-card--utility .kanban-card__title { color: #d0d8f0; }
+
+/* gen — тёмно-серый (standard minigen) */
+.kanban-card--gen,
+.kanban-square--gen {
+  border-color: #4a4a55;
+  background: color-mix(in srgb, #555560 15%, var(--clr-surface));
+}
+.kanban-card--gen .kanban-card__title { color: #b8b8c8; }
+.kanban-card--gen .kanban-card__mode {
+  background: color-mix(in srgb, #555560 25%, var(--clr-surface));
+  color: #b8b8c8;
+  border-color: #4a4a55;
 }
 
 /* ================================================================
@@ -492,7 +608,7 @@ html, body {
 }
 
 .stat-pill__label {
-  font-size: calc(var(--r) * 16);
+  font-size: calc(var(--r) * 13);
   color: var(--clr-text-muted);
   font-weight: 600;
   text-transform: uppercase;
@@ -500,7 +616,7 @@ html, body {
 }
 
 .stat-pill__value {
-  font-size: calc(var(--r) * 20);
+  font-size: calc(var(--r) * 17);
   font-weight: 700;
 }
 
@@ -518,8 +634,8 @@ html, body {
   align-items: center;
 }
 
-.day-timer__label { font-size: calc(var(--r) * 16); color: var(--clr-text-muted); }
-.day-timer__time  { font-size: calc(var(--r) * 16); font-weight: 700; color: var(--clr-accent2); }
+.day-timer__label { font-size: calc(var(--r) * 14); color: var(--clr-text-muted); }
+.day-timer__time  { font-size: calc(var(--r) * 14); font-weight: 700; color: var(--clr-accent2); }
 
 /* Active order */
 
@@ -530,12 +646,12 @@ html, body {
 }
 
 .active-order__title {
-  font-size: calc(var(--r) * 22);
+  font-size: calc(var(--r) * 18);
   font-weight: 700;
 }
 
 .active-order__gens {
-  font-size: calc(var(--r) * 16);
+  font-size: calc(var(--r) * 13);
   color: var(--clr-text-muted);
 }
 
@@ -682,14 +798,14 @@ html, body {
   position: relative;
   width: 100%;
   overflow: hidden;
-  border-radius: calc(var(--r) * 22);
-  /* Height animated: 88px (btn) → 260px (cards) */
-  height: calc(var(--r) * 88);
+  border-radius: calc(var(--r) * 18);
+  /* Height: 72r (btn) → 200r (cards) */
+  height: calc(var(--r) * 72);
   transition: height 280ms cubic-bezier(0.2, 0, 0, 1);
 }
 
 .work-gen-zone--active {
-  height: calc(var(--r) * 260);
+  height: calc(var(--r) * 200);
 }
 
 /* Gap phase: zone is tappable — show pointer + subtle ring pulse */
@@ -1237,6 +1353,16 @@ html, body {
   mix-blend-mode: soft-light;
 }
 
+/* Deck hover highlight — shown when hovering over the skills/deck zone */
+.rest-layer--desk-deck {
+  background-image: url('data/img/room/desk-deck.png');
+  mix-blend-mode: normal;
+  transition: opacity 150ms ease;
+}
+.rest-scene--skills-hover .rest-layer--desk-deck {
+  opacity: 1;
+}
+
 /* Quick action pills — floating top-of-room */
 .rest-quick-strip {
   position: absolute;
@@ -1294,6 +1420,10 @@ html, body {
 
 /* Label — always visible */
 .rest-zone__label {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--r) * 4);
   font-size: calc(var(--r) * 11);
   font-weight: 800;
   letter-spacing: 0.10em;
@@ -1308,13 +1438,17 @@ html, body {
 /* Магазин — label чуть ниже верха зоны */
 .rest-zone[data-hotspot="shop"] {
   justify-content: flex-start;
+  align-items: flex-start;
   padding-top: calc(var(--r) * 22);
+  padding-left: calc(var(--r) * 12);
 }
 
-/* Навыки — label у верхнего края зоны */
+/* Навыки — label у верхнего края зоны, вправо */
 .rest-zone[data-hotspot="skills"] {
   justify-content: flex-start;
+  align-items: flex-end;
   padding-top: calc(var(--r) * 5);
+  padding-right: calc(var(--r) * 6);
 }
 
 /* Press / active — label ярче */
@@ -1330,16 +1464,14 @@ html, body {
 
 .rest-hotspot__dot {
   display: none;
-  position: absolute;
-  top: calc(var(--r) * -4);
-  right: calc(var(--r) * -4);
-  width: calc(var(--r) * 10);
-  height: calc(var(--r) * 10);
+  flex-shrink: 0;
+  width: calc(var(--r) * 8);
+  height: calc(var(--r) * 8);
   background: var(--clr-accent);
   border-radius: 50%;
   animation: rest-hotspot-pulse 1.6s ease-in-out infinite;
 }
-.rest-hotspot__dot--visible { display: block; }
+.rest-hotspot__dot--visible { display: inline-block; }
 
 @keyframes rest-hotspot-pulse {
   0%, 100% { transform: scale(1);   opacity: 1;    }
