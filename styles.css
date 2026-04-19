@@ -868,11 +868,191 @@ html, body {
   object-fit: cover;
 }
 
-/* Beat-pulse on entire card grid (class added by JS 200ms after spawn) */
-.work-gen-zone .minigen-images-inline--pulsing .minigen-cell {
-  animation: gen-zone-pulse 250ms ease-in-out 250ms infinite alternate both;
+/* Beat-pulse wrapper sits OUTSIDE .minigen-cell — scales the whole card
+   (border, corners, content) together. Only handles beat scale.
+   animation-delay set in JS per-element to sync to current beat phase. */
+.work-gen-zone .minigen-cell-wrap {
+  animation: minigen-cell-beat-pulse 250ms ease-in-out infinite alternate;
   transform-origin: 50% 50%;
 }
+
+@keyframes minigen-cell-beat-pulse {
+  from { transform: scale(1.000); }
+  to   { transform: scale(1.045); }
+}
+
+/* Tap press-bounce: overrides beat-pulse for ~120ms on the tapped card.
+   By the time the animation ends the card is already collapsed — no visual conflict. */
+.work-gen-zone .minigen-cell-wrap--tapped {
+  animation: minigen-cell-tap-press 120ms cubic-bezier(0.25, 1.6, 0.5, 1) both;
+}
+
+@keyframes minigen-cell-tap-press {
+  0%   { transform: scale(1.000); }
+  25%  { transform: scale(0.860); }
+  65%  { transform: scale(1.060); }
+  100% { transform: scale(1.000); }
+}
+
+/* Flash overlay — injected inside .minigen-cell (clipped by overflow:hidden) */
+.minigen-tap-flash {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: rgba(255, 255, 255, 0.52);
+  pointer-events: none;
+  z-index: 20;
+  animation: minigen-tap-flash-anim 95ms ease-out forwards;
+}
+
+@keyframes minigen-tap-flash-anim {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
+/* ── Slot machine ──────────────────────────────────────── */
+/*
+  Layout math:
+    zone --active height  = 200r
+    .minigen-slot         = position:absolute; inset:0; padding:8r
+    drum height           = zone(200r) - pad_top(8r) - pad_bot(8r) = 184r
+    cell pitch (height)   = 184r  →  cOff = (drumH - cellH)/2 = 0  (no offset needed)
+    cell image area       = 184r - pad_top(12r) - pad_bot(12r) = 160r  (visible thumbnail)
+    gap between images    = 12r + 12r = 24r  (shown during scroll transition)
+    totalH                = 5 * 184r = 920r
+    6th DOM cell          = copy of cell[0] → seamless modulo wrap
+*/
+
+.minigen-slot {
+  /* Fills gen-zone absolutely — same pattern as .minigen-images-inline */
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: row;
+  gap: calc(var(--r) * 8);
+  padding: calc(var(--r) * 8);
+  cursor: pointer;
+  user-select: none;
+}
+
+.minigen-slot__drum {
+  /* Each drum stretches to full slot height via default align-items:stretch */
+  flex: 1;
+  overflow: hidden;
+  border-radius: calc(var(--r) * 10);
+  border: calc(var(--r) * 2) solid rgba(255,255,255,0.15);
+  position: relative;
+  transition: border-color 120ms;
+  transform-origin: 50% 50%;
+  animation: minigen-cell-beat-pulse 250ms ease-in-out infinite alternate;
+}
+
+.minigen-slot__drum--stopped {
+  border-color: rgba(255,255,255,0.6);
+  box-shadow: 0 0 calc(var(--r) * 12) rgba(255,255,255,0.25);
+  animation: none;
+}
+
+/* Fade gradient at top and bottom edges while spinning */
+.minigen-slot__drum::before,
+.minigen-slot__drum::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0;
+  height: 40%;
+  z-index: 2;
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity 180ms ease;
+}
+.minigen-slot__drum::before {
+  top: 0;
+  background: linear-gradient(to bottom, #191921 0%, #191921 15%, transparent 100%);
+}
+.minigen-slot__drum::after {
+  bottom: 0;
+  background: linear-gradient(to top, #191921 0%, #191921 15%, transparent 100%);
+}
+/* Fade out the gradient when drum stops */
+.minigen-slot__drum--stopped::before,
+.minigen-slot__drum--stopped::after {
+  opacity: 0;
+}
+
+.minigen-slot__drum--snap {
+  animation: slot-drum-snap 200ms ease-out;
+}
+
+@keyframes slot-drum-snap {
+  0%   { transform: scaleY(1); }
+  40%  { transform: scaleY(1.06); }
+  100% { transform: scaleY(1); }
+}
+
+.minigen-slot__strip {
+  /* Absolute so it doesn't participate in drum's flow; translateY drives scroll */
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  display: flex;
+  flex-direction: column;
+  will-change: transform;
+}
+
+.minigen-slot__cell {
+  /*
+    Pitch = drum height (184r) → exactly 1 cell visible per drum at any moment.
+    cOff = (drumH - cellH)/2 = 0 → translateY = -pos  (no offset arithmetic).
+    Padding creates the visible gap between thumbnails during scroll.
+  */
+  flex-shrink: 0;
+  width: 100%;
+  height: calc(var(--r) * 184);  /* = drum height → cOff = 0 */
+  padding: calc(var(--r) * 12);
+  box-sizing: border-box;
+}
+
+/* Inner <img>: fills cell minus padding — padding IS the gap between images */
+.minigen-slot__cell-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  border-radius: calc(var(--r) * 8);
+  display: block;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.minigen-slot__result-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(var(--r) * 52);
+  font-weight: 900;
+  color: #fff;
+  text-shadow: 0 0 calc(var(--r) * 20) rgba(0,0,0,0.8);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 180ms ease-out;
+  z-index: 20;
+  background: rgba(0,0,0,0.35);
+  border-radius: calc(var(--r) * 10);
+  backdrop-filter: blur(2px);
+  cursor: pointer;
+}
+
+.minigen-slot__result-overlay--visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.minigen-slot__result-overlay[data-result="correct"] { color: #ffd700; }
+.minigen-slot__result-overlay[data-result="wrong"]   { color: #ff5555; }
+
+
 
 /* ── Quality feedback in gen-zone gap ──────────────────── */
 

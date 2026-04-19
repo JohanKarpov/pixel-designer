@@ -1,17 +1,13 @@
-// src/minigen.js — Mini-game popup for generate button
-// Shows 3 quality variants of an image; player picks the best quality (lowest n = best).
-// Returns: 'correct' | 'partial' | 'wrong' | 'skip'
+// src/core/minigen.js — Mini-game popup for generate button
+// Three modes:
+//   'gen'   — slot machine (3 drums, beat-tap to stop each, combo multipliers)
+//   'sort'  — pick the best image from 3 options (variant 1 = correct)
+//   'study' — alias for sort (same UI, different order context)
 
-import { state, saveState } from './state.js';
-import { checkBeatHit, getRhythmCombo } from './rhythm.js';
+import { state } from './state.js';
+import { checkBeatHit, getRhythmCombo, getBeatPhase, isRhythmActive } from './rhythm.js';
 
-// Labels that trigger the mini-game
-const TRIGGER_LABELS = new Set(['Работать', 'Создавать', 'Публиковать', 'Генерировать']);
-const RESULT_EMOJI   = { correct: '✅', partial: '⚠️', wrong: '❌' };
-
-// Beat quality of the last inline cell pick — read by work.js after runMinigen resolves
-let _lastBeatQuality = 'off';
-export function getLastBeatQuality() { return _lastBeatQuality; }
+const RESULT_EMOJI = { correct: '✅', partial: '⚠️', wrong: '❌' };
 
 const MANIFEST_URL = 'data/minigen-game/manifest.json';
 let _manifest = null;
@@ -46,6 +42,16 @@ function _pickDistinctGroups(manifest, allowedTags, n) {
     const result = [];
     for (let i = 0; i < n; i++) result.push(shuffled[i % shuffled.length]);
     return result;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Beat-sync pulse: set animation-delay on each img so the loop
+// is already at the correct phase when cards first appear.
+// ─────────────────────────────────────────────────────────────
+function _applyBeatPulse(wrapEls) {
+    const phase = isRhythmActive() ? getBeatPhase() : 0; // 0..1
+    const delayMs = -Math.round(phase * 250);             // half-period sync
+    wrapEls.forEach(el => { el.style.animationDelay = delayMs + 'ms'; });
 }
 
 function _shuffle(arr) {
@@ -154,293 +160,44 @@ function _spawnEmojiParticleAt(container, coords, emoji) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// First-time tutorial dialog (vn-style, chat-theme)
+// Shared inline cell finish helper (used by sort/study)
 // ─────────────────────────────────────────────────────────────
 
-const TUTORIAL_LINES = [
-    'На всякий случай напомню — я дам тебе несколько вариантов генерации на выбор. Твоя задача — выбрать лучший результат!',
-    'Если сейчас не до выбора — можешь пропустить, но придётся генерировать заново.',
-];
+function _finishInlineCell(imagesDiv, chosenCellEl, result, spawnCoords, emojiCtx, resolve) {
+    imagesDiv.querySelectorAll('.minigen-cell').forEach(c => { c.style.pointerEvents = 'none'; });
 
-function _waitForTutorial(container) {
-    return new Promise(resolve => {
-        let lineIdx = 0;
-
-        const tut = document.createElement('div');
-        tut.className = 'minigen-tutorial-overlay';
-        tut.innerHTML =
-            `<div class="minigen-tutorial-dialog">` +
-            `<div class="minigen-tutorial-speaker-row">` +
-            `<img class="minigen-tutorial-speaker-icon" src="images/cinematic/chatdjbt-icon.png" alt="">` +
-            `<span class="minigen-tutorial-speaker-name">ChatDJBT</span>` +
-            `</div>` +
-            `<p class="minigen-tutorial-text"></p>` +
-            `<div class="vn-actions">` +
-            `<button class="dialog-next-btn minigen-tutorial-next" type="button">▶</button>` +
-            `</div>` +
-            `</div>`;
-        container.appendChild(tut);
-
-        const textEl  = tut.querySelector('.minigen-tutorial-text');
-        const nextBtn = tut.querySelector('.minigen-tutorial-next');
-
-        textEl.textContent = TUTORIAL_LINES[0];
-        requestAnimationFrame(() => tut.classList.add('minigen-tutorial-overlay--visible'));
-
-        nextBtn.addEventListener('click', () => {
-            lineIdx++;
-            if (lineIdx < TUTORIAL_LINES.length) {
-                textEl.textContent = TUTORIAL_LINES[lineIdx];
-            } else {
-                tut.classList.remove('minigen-tutorial-overlay--visible');
-                tut.addEventListener('transitionend', () => { tut.remove(); resolve(); }, { once: true });
-            }
+    if (chosenCellEl) {
+        imagesDiv.querySelectorAll('.minigen-cell').forEach(c => {
+            if (c !== chosenCellEl) c.classList.add('minigen-cell--hidden');
         });
-    });
-}
+        chosenCellEl.classList.add('minigen-cell--pressed');
+        setTimeout(() => {
+            chosenCellEl.classList.remove('minigen-cell--pressed');
+            chosenCellEl.classList.add('minigen-cell--collapsing');
+            if (spawnCoords) _spawnEmojiParticleAt(emojiCtx, spawnCoords, RESULT_EMOJI[result] || '');
 
-// ─────────────────────────────────────────────────────────────
-// Public API
-// ─────────────────────────────────────────────────────────────
-
-/**
- * Returns true if the given generateActionLabel should trigger the mini-game.
- */
-export function shouldShowMiniGen(label) {
-    return TRIGGER_LABELS.has(label);
-}
-
-/**
- * Shows the image quality mini-game popup.
- * @param {object} [options]
- * @param {string[]} [options.allowedTags]   If set, only groups with these tags are used.
- * @param {number}   [options.autoSelectMs]  If > 0, auto-picks the correct cell after this many ms (autogen mode).
- * Resolves to 'correct' | 'partial' | 'wrong' | 'skip'.
- */
-export async function showMiniGenPopup({ allowedTags, autoSelectMs = 0, mode = 'standard', inlineContainer = null } = {}) {
-    let manifest;
-    try {
-        manifest = await _loadManifest();
-    } catch (e) {
-        console.warn('[minigen] Could not load manifest, skipping:', e.message);
-        return 'skip';
-    }
-
-    if (!manifest?.groups?.length) return 'skip';
-
-    // Delegate to mode-specific handlers
-    if (mode === 'study') return _showStudyPopup(manifest);
-    if (mode === 'sort')  return _showSortPopup(manifest, allowedTags);
-    if (inlineContainer)  return _showInlinePopup(manifest, { allowedTags, inlineContainer, autoSelectMs });
-
-    const container = document.querySelector('.game-container') || document.body;
-
-    // Skip tutorial in autogen mode (no human present)
-    if (!autoSelectMs && !state.miniGenTutorialSeen) {
-        state.miniGenTutorialSeen = true;
-        saveState();
-        await _waitForTutorial(container);
-    }
-
-    const group    = _pickGroup(manifest, allowedTags);
-    const count    = Math.min(group.variants || 3, 3);
-    const variants = _shuffle(Array.from({ length: count }, (_, i) => i + 1));
-    const basePath = `data/minigen-game/minigen-${group.tag}-`;
-
-    // ai_vis: highlight a cell with accuracy chance per tier (0.50 / 0.60 / 0.70 / 0.90 / 0.95)
-    const _visTier     = state.skillTree?.tiers?.ai_vis || 0;
-    const _visAccuracy = [0, 0.50, 0.60, 0.70, 0.90, 0.95][Math.min(_visTier, 5)];
-    const _visActive   = _visTier >= 1;
-
-    return new Promise(resolve => {
-        const overlay = document.createElement('div');
-        overlay.className = 'minigen-overlay';
-
-        const cellsHtml = variants.map(n =>
-            `<div class="minigen-cell" data-variant="${n}">` +
-            `<img class="minigen-img" src="${basePath}${n}.png" alt="" draggable="false">` +
-            `</div>`
-        ).join('');
-
-        // Auto-bar shown only in autogen mode
-        const autoBarHtml = autoSelectMs > 0
-            ? `<div class="minigen-auto-bar-wrap"><div class="minigen-auto-bar"></div></div>`
-            : '';
-
-        overlay.innerHTML =
-            `<div class="minigen-popup">` +
-            `<div class="minigen-prompt"><span class="minigen-prompt-text">Выбери генерацию</span></div>` +
-            autoBarHtml +
-            `<div class="minigen-images">${cellsHtml}</div>` +
-            `<button class="minigen-skip-btn" type="button">Пропустить</button>` +
-            `</div>`;
-
-        container.appendChild(overlay);
-
-        // Highlight a cell based on ai_vis accuracy roll
-        if (_visActive) {
-            const accuracyHit    = Math.random() < _visAccuracy;
-            const highlightVariant = accuracyHit
-                ? 1
-                : variants.filter(n => n !== 1)[Math.floor(Math.random() * (variants.length - 1))];
-            const highlightCell  = overlay.querySelector(`.minigen-cell[data-variant="${highlightVariant}"]`);
-            if (highlightCell) highlightCell.classList.add('minigen-cell--correct');
-        }
-
-        requestAnimationFrame(() => {
-            overlay.classList.add('minigen-overlay--visible');
-            _applyComboCellEntrance(Array.from(overlay.querySelectorAll('.minigen-cell')));
-        });
-
-        // Declared before `finish` so they can be referenced inside it
-        let _autoTimer = null;
-        let _autoRaf   = null;
-
-        function finish(result, chosenCellEl, spawnCoords) {
-            // Cancel any pending auto-timer
-            if (_autoTimer) clearTimeout(_autoTimer);
-            if (_autoRaf)   cancelAnimationFrame(_autoRaf);
-
-            // Disable all interactions immediately
-            overlay.querySelectorAll('.minigen-cell').forEach(c => { c.style.pointerEvents = 'none'; });
-            overlay.querySelector('.minigen-skip-btn').style.pointerEvents = 'none';
-
-            if (chosenCellEl) {
-                // Fade out non-chosen cells
-                overlay.querySelectorAll('.minigen-cell').forEach(c => {
-                    if (c !== chosenCellEl) c.classList.add('minigen-cell--hidden');
-                });
-                // Brief press effect then collapse
-                chosenCellEl.classList.add('minigen-cell--pressed');
-                setTimeout(() => {
-                    chosenCellEl.classList.remove('minigen-cell--pressed');
-                    chosenCellEl.classList.add('minigen-cell--collapsing');
-                    if (spawnCoords) {
-                        _spawnEmojiParticleAt(container, spawnCoords, RESULT_EMOJI[result]);
-                    }
-                }, 35);
-                // Fade overlay — resolve immediately so button re-enables fast
-                setTimeout(() => {
-                    overlay.classList.remove('minigen-overlay--visible');
-                    overlay.addEventListener('transitionend', () => overlay.remove(), { once: true });
-                    resolve(result);
-                }, 150);
-            } else {
-                // Skip — just fade out immediately
-                overlay.classList.remove('minigen-overlay--visible');
-                overlay.addEventListener('transitionend', () => overlay.remove(), { once: true });
+            let _resolved = false;
+            const _doResolve = () => {
+                if (_resolved) return;
+                _resolved = true;
+                imagesDiv.remove();
                 resolve(result);
-            }
-        }
-
-        overlay.querySelectorAll('.minigen-cell').forEach(cell => {
-            cell.addEventListener('click', () => {
-                checkBeatHit(); // weak beat — score the minigen pick
-                const v = parseInt(cell.dataset.variant, 10);
-                let result;
-                if (v === 1)          result = 'correct';
-                else if (v === count) result = 'wrong';
-                else                  result = 'partial';
-
-                // Pre-capture spawn position BEFORE any DOM changes (prevents
-                // getBoundingClientRect forcing a reflow mid-transition).
-                let spawnCoords = null;
-                if (result !== 'skip' && RESULT_EMOJI[result]) {
-                    const ctxRect  = container.getBoundingClientRect();
-                    const cellRect = cell.getBoundingClientRect();
-                    spawnCoords = {
-                        x: (cellRect.left - ctxRect.left) + cellRect.width  * 0.5,
-                        y: (cellRect.top  - ctxRect.top)  + cellRect.height * 0.45,
-                        r: ctxRect.width / 1080,
-                    };
-                }
-
-                finish(result, cell, spawnCoords);
-                // Track manual correct pick on 'tema' group for achievement
-                if (result === 'correct' && group.tag === 'tema') {
-                    state.stats.temaCorrectPicks = (state.stats.temaCorrectPicks || 0) + 1;
-                }
-            });
-        });
-
-        overlay.querySelector('.minigen-skip-btn').addEventListener('click', () => {
-            finish('skip', null, null);
-        });
-
-        // ── Autogen auto-timer ──────────────────────────────────
-        if (autoSelectMs > 0) {
-            // Animate the countdown bar
-            const bar = overlay.querySelector('.minigen-auto-bar');
-            if (bar) {
-                const t0 = performance.now();
-                const tick = (now) => {
-                    const progress = Math.max(0, 1 - (now - t0) / autoSelectMs);
-                    bar.style.transform = `scaleX(${progress.toFixed(4)})`;
-                    if (progress > 0) _autoRaf = requestAnimationFrame(tick);
-                };
-                _autoRaf = requestAnimationFrame(tick);
-            }
-
-            // Auto-pick the ai_vis-highlighted cell, or a random cell if none is highlighted
-            _autoTimer = setTimeout(() => {
-                _autoTimer = null;
-                // Prefer the cell highlighted by ai_vis (minigen-cell--correct);
-                // fall back to a random cell when ai_vis is inactive.
-                let targetCell = overlay.querySelector('.minigen-cell--correct');
-                if (!targetCell) {
-                    const allCells = Array.from(overlay.querySelectorAll('.minigen-cell'));
-                    targetCell = allCells.length
-                        ? allCells[Math.floor(Math.random() * allCells.length)]
-                        : null;
-                }
-                if (!targetCell) { finish('skip', null, null); return; }
-
-                const v = parseInt(targetCell.dataset.variant, 10);
-                let result;
-                if (v === 1)          result = 'correct';
-                else if (v === count) result = 'wrong';
-                else                  result = 'partial';
-
-                const ctxRect  = container.getBoundingClientRect();
-                const cellRect = targetCell.getBoundingClientRect();
-                const spawnCoords = {
-                    x: (cellRect.left - ctxRect.left) + cellRect.width  * 0.5,
-                    y: (cellRect.top  - ctxRect.top)  + cellRect.height * 0.45,
-                    r: ctxRect.width / 1080,
-                };
-                finish(result, targetCell, spawnCoords);
-            }, autoSelectMs);
-        }
-    });
-}
-
-/**
- * High-level wrapper for work.js generate button.
- * Measures reaction time from popup-open to player pick.
- * @param {object} [options]
- * @param {string[]|null} [options.tags]  Forwarded as allowedTags to showMiniGenPopup.
- * @param {string} [options.mode]         'standard' | 'study' | 'sort'
- * @param {HTMLElement|null} [options.inlineContainer]  If provided, renders cards inline (no overlay).
- * @returns {Promise<{ result: string, reactionMs: number }>}
- */
-export async function runMinigen({ tags = null, mode = 'standard', inlineContainer = null } = {}) {
-    const t0 = performance.now();
-    let result = 'skip';
-    try {
-        result = await showMiniGenPopup({ allowedTags: tags || undefined, mode, inlineContainer });
-    } catch (e) {
-        console.warn('[minigen] runMinigen error:', e);
+            };
+            chosenCellEl.addEventListener('transitionend', _doResolve, { once: true });
+            setTimeout(_doResolve, 100);
+        }, 35);
+    } else {
+        imagesDiv.remove();
+        resolve(result);
     }
-    const reactionMs = performance.now() - t0;
-    return { result, reactionMs };
 }
 
-// ────────────────────────────────────────────────────────────
-// Inline mode — renders cards directly into a zone element (no overlay/backdrop)
-// The caller manages zone visibility (work-gen-zone--active class + button hide/show).
-// ────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// Sort mode (and study alias) — pick the best image from 3
+// variant 1 = correct, variant 2 = partial, variant 3 = wrong
+// ─────────────────────────────────────────────────────────────
 
-async function _showInlinePopup(manifest, { allowedTags, inlineContainer, autoSelectMs = 0 }) {
+async function _showSortPopup(manifest, { allowedTags, inlineContainer }) {
     const group    = _pickGroup(manifest, allowedTags);
     const count    = Math.min(group.variants || 3, 3);
     const variants = _shuffle(Array.from({ length: count }, (_, i) => i + 1));
@@ -450,17 +207,15 @@ async function _showInlinePopup(manifest, { allowedTags, inlineContainer, autoSe
     const _visAccuracy = [0, 0.50, 0.60, 0.70, 0.90, 0.95][Math.min(_visTier, 5)];
     const _visActive   = _visTier >= 1;
 
-    // Replace any leftover cells from previous round
-    const oldCells = inlineContainer.querySelector('.minigen-images-inline');
-    if (oldCells) oldCells.remove();
-    // Remove quality feedback from previous round
-    inlineContainer.querySelector('.gen-feedback')?.remove();
+    inlineContainer.querySelector('.minigen-images-inline')?.remove();
 
     const imagesDiv = document.createElement('div');
     imagesDiv.className = 'minigen-images minigen-images-inline';
     imagesDiv.innerHTML = variants.map(n =>
+        `<div class="minigen-cell-wrap">` +
         `<div class="minigen-cell" data-variant="${n}">` +
         `<img class="minigen-img" src="${basePath}${n}.png" alt="" draggable="false">` +
+        `</div>` +
         `</div>`
     ).join('');
 
@@ -475,63 +230,23 @@ async function _showInlinePopup(manifest, { allowedTags, inlineContainer, autoSe
         if (highlightCell) highlightCell.classList.add('minigen-cell--correct');
     }
 
-    requestAnimationFrame(() => {
-        _applyComboCellEntrance(Array.from(inlineContainer.querySelectorAll('.minigen-cell')));
-    });
+    _applyBeatPulse(Array.from(imagesDiv.querySelectorAll('.minigen-cell-wrap')));
+    requestAnimationFrame(() => _applyComboCellEntrance(Array.from(imagesDiv.querySelectorAll('.minigen-cell'))));
 
-    // Add beat-pulse class to grid after enter animation completes (200ms)
-    setTimeout(() => {
-        if (document.contains(imagesDiv)) imagesDiv.classList.add('minigen-images-inline--pulsing');
-    }, 200);
-
-    // Emoji particles float up relative to game-container
     const emojiCtx = document.querySelector('.game-container') || document.body;
 
     return new Promise(resolve => {
-        let _autoTimer = null;
-        let _autoRaf   = null;
-
-        function finish(result, chosenCellEl, spawnCoords) {
-            if (_autoTimer) clearTimeout(_autoTimer);
-            if (_autoRaf)   cancelAnimationFrame(_autoRaf);
-
-            imagesDiv.querySelectorAll('.minigen-cell').forEach(c => { c.style.pointerEvents = 'none'; });
-
-            if (chosenCellEl) {
-                imagesDiv.querySelectorAll('.minigen-cell').forEach(c => {
-                    if (c !== chosenCellEl) c.classList.add('minigen-cell--hidden');
-                });
-                chosenCellEl.classList.add('minigen-cell--pressed');
-                setTimeout(() => {
-                    chosenCellEl.classList.remove('minigen-cell--pressed');
-                    chosenCellEl.classList.add('minigen-cell--collapsing');
-                    // Emoji: fire-and-forget, does NOT block chain
-                    if (spawnCoords) _spawnEmojiParticleAt(emojiCtx, spawnCoords, RESULT_EMOJI[result]);
-                    // Resolve as soon as collapse transition ends (80ms), with 100ms safety fallback
-                    let _resolved = false;
-                    const _doResolve = () => {
-                        if (_resolved) return;
-                        _resolved = true;
-                        imagesDiv.remove();
-                        resolve(result);
-                    };
-                    chosenCellEl.addEventListener('transitionend', _doResolve, { once: true });
-                    setTimeout(_doResolve, 100);
-                }, 35);
-            } else {
-                imagesDiv.remove();
-                resolve(result);
-            }
-        }
-
         imagesDiv.querySelectorAll('.minigen-cell').forEach(cell => {
             cell.addEventListener('click', () => {
-                _lastBeatQuality = checkBeatHit().quality;
-                const v = parseInt(cell.dataset.variant, 10);
-                let result;
-                if (v === 1)          result = 'correct';
-                else if (v === count) result = 'wrong';
-                else                  result = 'partial';
+                const wrapEl = cell.parentElement;
+                if (wrapEl?.classList.contains('minigen-cell-wrap')) wrapEl.classList.add('minigen-cell-wrap--tapped');
+                const flashEl = document.createElement('div');
+                flashEl.className = 'minigen-tap-flash';
+                cell.appendChild(flashEl);
+
+                checkBeatHit();
+                const v      = parseInt(cell.dataset.variant, 10);
+                const result = v === 1 ? 'correct' : v === count ? 'wrong' : 'partial';
 
                 let spawnCoords = null;
                 if (RESULT_EMOJI[result]) {
@@ -544,213 +259,307 @@ async function _showInlinePopup(manifest, { allowedTags, inlineContainer, autoSe
                     };
                 }
 
-                finish(result, cell, spawnCoords);
+                _finishInlineCell(imagesDiv, cell, result, spawnCoords, emojiCtx, resolve);
+
                 if (result === 'correct' && group.tag === 'tema') {
                     state.stats.temaCorrectPicks = (state.stats.temaCorrectPicks || 0) + 1;
                 }
             });
         });
-
-        if (autoSelectMs > 0) {
-            _autoTimer = setTimeout(() => {
-                _autoTimer = null;
-                let targetCell = inlineContainer.querySelector('.minigen-cell--correct');
-                if (!targetCell) {
-                    const all = Array.from(inlineContainer.querySelectorAll('.minigen-cell'));
-                    targetCell = all.length ? all[Math.floor(Math.random() * all.length)] : null;
-                }
-                if (!targetCell) { finish('skip', null, null); return; }
-
-                const v      = parseInt(targetCell.dataset.variant, 10);
-                const result = v === 1 ? 'correct' : v === count ? 'wrong' : 'partial';
-                const ctxRect  = emojiCtx.getBoundingClientRect();
-                const cellRect = targetCell.getBoundingClientRect();
-                finish(result, targetCell, {
-                    x: (cellRect.left - ctxRect.left) + cellRect.width  * 0.5,
-                    y: (cellRect.top  - ctxRect.top)  + cellRect.height * 0.45,
-                    r: ctxRect.width / 1080,
-                });
-            }, autoSelectMs);
-        }
     });
 }
 
 // ─────────────────────────────────────────────────────────────
-// Study mode — pick the image matching the shown tag
+// Slot machine combo evaluator
 // ─────────────────────────────────────────────────────────────
 
-/**
- * Picks 3 distinct groups, announces the target tag as the prompt.
- * Player must click the image from the target group.
- * Returns 'correct' | 'wrong'.
- */
-async function _showStudyPopup(manifest) {
-    const container = document.querySelector('.game-container') || document.body;
-    const groups    = manifest.groups;
-    if (groups.length < 3) return 'skip';
+function _evalSlotCombo(drums) {
+    // drums = [{ tag, quality }, { tag, quality }, { tag, quality }]
+    const tags      = drums.map(d => d.tag);
+    const qualities = drums.map(d => d.quality);
 
-    // Pick 3 distinct groups
-    const shuffled = [...groups];
-    _shuffle(shuffled);
-    const chosen  = shuffled.slice(0, 3);
-    const targetIdx = Math.floor(Math.random() * 3);   // which of the 3 is the target
-    const target  = chosen[targetIdx];
+    const sameTag     = tags[0] === tags[1] && tags[1] === tags[2];
+    const sameQuality = qualities[0] === qualities[1] && qualities[1] === qualities[2];
+    const count1      = qualities.filter(q => q === 1).length;
+    const count2      = qualities.filter(q => q === 2).length;
 
-    return new Promise(resolve => {
-        const overlay = document.createElement('div');
-        overlay.className = 'minigen-overlay';
+    let mult   = 0;
+    let result = 'wrong';
 
-        const cellsHtml = chosen.map((g, i) =>
-            `<div class="minigen-cell minigen-cell--study" data-group-idx="${i}">` +
-            `<img class="minigen-img" src="data/minigen-game/minigen-${g.tag}-1.png" alt="" draggable="false">` +
-            `</div>`
-        ).join('');
+    if (sameTag && sameQuality)  { result = 'correct'; mult = 100; }
+    else if (count1 === 3)       { result = 'correct'; mult = 50;  }
+    else if (sameTag)            { result = 'correct'; mult = 50;  }
+    else if (count2 === 3)       { result = 'correct'; mult = 25;  }
+    else if (qualities[0] === 3 && qualities[1] === 3 && qualities[2] === 3) { result = 'correct'; mult = 5; }
+    else if (count1 === 2)       { result = 'correct'; mult = 2;   }
+    else if (count1 === 1)       { result = 'correct'; mult = 1;   }
 
-        overlay.innerHTML =
-            `<div class="minigen-popup minigen-popup--study">` +
-            `<div class="minigen-prompt">` +
-            `<span class="minigen-prompt-label">Найди:</span>` +
-            `<span class="minigen-prompt-text minigen-prompt-tag">${target.tag}</span>` +
-            `</div>` +
-            `<div class="minigen-images">${cellsHtml}</div>` +
-            `<button class="minigen-skip-btn" type="button">Пропустить</button>` +
-            `</div>`;
-
-        container.appendChild(overlay);
-        requestAnimationFrame(() => {
-            overlay.classList.add('minigen-overlay--visible');
-            _applyComboCellEntrance(Array.from(overlay.querySelectorAll('.minigen-cell')));
-        });
-
-        function finish(result, chosenCellEl) {
-            overlay.querySelectorAll('.minigen-cell').forEach(c => { c.style.pointerEvents = 'none'; });
-            if (chosenCellEl) {
-                overlay.querySelectorAll('.minigen-cell').forEach(c => {
-                    if (c !== chosenCellEl) c.classList.add('minigen-cell--hidden');
-                });
-                chosenCellEl.classList.add('minigen-cell--pressed');
-                const ctxRect  = container.getBoundingClientRect();
-                const cellRect = chosenCellEl.getBoundingClientRect();
-                const spawnCoords = {
-                    x: (cellRect.left - ctxRect.left) + cellRect.width  * 0.5,
-                    y: (cellRect.top  - ctxRect.top)  + cellRect.height * 0.45,
-                    r: ctxRect.width / 1080,
-                };
-                setTimeout(() => {
-                    chosenCellEl.classList.remove('minigen-cell--pressed');
-                    chosenCellEl.classList.add('minigen-cell--collapsing');
-                    _spawnEmojiParticleAt(container, spawnCoords, RESULT_EMOJI[result] || '');
-                }, 35);
-                setTimeout(() => {
-                    overlay.classList.remove('minigen-overlay--visible');
-                    overlay.addEventListener('transitionend', () => overlay.remove(), { once: true });
-                    resolve(result);
-                }, 150);
-            } else {
-                overlay.classList.remove('minigen-overlay--visible');
-                overlay.addEventListener('transitionend', () => overlay.remove(), { once: true });
-                resolve('skip');
-            }
-        }
-
-        overlay.querySelectorAll('.minigen-cell').forEach(cell => {
-            cell.addEventListener('click', () => {
-                checkBeatHit(); // weak beat
-                const idx = parseInt(cell.dataset.groupIdx, 10);
-                finish(idx === targetIdx ? 'correct' : 'wrong', cell);
-            });
-        });
-
-        overlay.querySelector('.minigen-skip-btn').addEventListener('click', () => finish('skip', null));
-    });
+    return { result, mult };
 }
 
 // ─────────────────────────────────────────────────────────────
-// Sort mode — pick the WORST image to exclude
+// Preload images — module-level cache keeps strong refs so GC
+// never discards decoded bitmaps before the drums start spinning.
 // ─────────────────────────────────────────────────────────────
 
-/**
- * Shows only variant 1 (good) and variant 2 (partial/medium).
- * Player must pick the WORST (variant 2) to exclude it.
- * Correct = picking variant 2.  Wrong = picking variant 1.
- */
-async function _showSortPopup(manifest, allowedTags) {
-    const container = document.querySelector('.game-container') || document.body;
+const _imgCache = new Map(); // url → HTMLImageElement, lives forever
 
-    // Pick 3 distinct groups: 2 show variant 1 (good), 1 shows variant 2 (medium)
-    const groups = _pickDistinctGroups(manifest, allowedTags, 3);
-    const mediumIdx = Math.floor(Math.random() * 3); // which slot gets the medium image
+function _preloadImages(urls) {
+    return Promise.allSettled(urls.map(url => new Promise(res => {
+        if (_imgCache.has(url)) { res(); return; } // already loaded
+        const img = new Image();
+        img.onload  = () => { _imgCache.set(url, img); res(); };
+        img.onerror = () => { res(); };             // fail silently
+        img.src     = url;
+    })));
+}
 
-    const cells = _shuffle(groups.map((group, i) => {
-        const variant  = (i === mediumIdx) ? 2 : 1;
-        const isWrong  = (variant === 1); // good image = wrong to exclude
-        return { src: `data/minigen-game/minigen-${group.tag}-${variant}.png`, variant, isWrong };
-    }));
+// ─────────────────────────────────────────────────────────────
+// Slot machine mode — 3 drums, tap to stop each
+// Uses CSS background-image cells to guarantee zero blank frames
+// even at 20+ cells/sec on mobile.
+// ─────────────────────────────────────────────────────────────
 
-    return new Promise(resolve => {
-        const overlay = document.createElement('div');
-        overlay.className = 'minigen-overlay';
+async function _showSlotPopup(manifest, { allowedTags, inlineContainer }) {
+    // Cells per second per drum (normalized by cellH at runtime — screen-size independent)
+    const SPEEDS_PPS = [8, 8, 8];
+    const STRIP_SIZE = 5; // 5 unique images per drum
 
-        const cellsHtml = cells.map((cell, i) =>
-            `<div class="minigen-cell minigen-cell--sort" data-idx="${i}">` +
-            `<img class="minigen-img" src="${cell.src}" alt="" draggable="false">` +
-            `</div>`
-        ).join('');
+    // Build flat pool of all available images split by quality
+    let allGroups = manifest.groups;
+    if (allowedTags && allowedTags.length) {
+        const tagSet   = new Set(allowedTags);
+        const filtered = allGroups.filter(g => tagSet.has(g.tag));
+        if (filtered.length) allGroups = filtered;
+    }
+    const poolQ1  = []; // quality = 1 (best variant of each group)
+    const poolAll = []; // all variants of all groups
+    allGroups.forEach(g => {
+        const count = Math.min(g.variants || 3, 3);
+        for (let v = 1; v <= count; v++) {
+            const img = { src: `data/minigen-game/minigen-${g.tag}-${v}.png`, tag: g.tag, quality: v };
+            poolAll.push(img);
+            if (v === 1) poolQ1.push(img);
+        }
+    });
 
-        overlay.innerHTML =
-            `<div class="minigen-popup minigen-popup--sort">` +
-            `<div class="minigen-prompt"><span class="minigen-prompt-text">Исключи худшее</span></div>` +
-            `<div class="minigen-images">${cellsHtml}</div>` +
-            `<button class="minigen-skip-btn" type="button">Пропустить</button>` +
-            `</div>`;
+    // Build strip per drum:
+    //   cell[0]   = 1 random quality-1 image
+    //   cell[1-4] = 4 fully random images (any quality, any group)
+    //   cell[5]   = duplicate of cell[0] for seamless modulo wrap
+    function _buildDrumStrip() {
+        const q1img = poolQ1[Math.floor(Math.random() * poolQ1.length)];
+        const strip = [q1img];
+        for (let i = 0; i < 4; i++) {
+            strip.push(poolAll[Math.floor(Math.random() * poolAll.length)]);
+        }
+        strip.push(strip[0]); // 6th cell = copy of [0] for seamless wrap
+        return strip;
+    }
 
-        container.appendChild(overlay);
-        requestAnimationFrame(() => {
-            overlay.classList.add('minigen-overlay--visible');
-            _applyComboCellEntrance(Array.from(overlay.querySelectorAll('.minigen-cell')));
+    const drumImages = [_buildDrumStrip(), _buildDrumStrip(), _buildDrumStrip()];
+
+    // ── Preload guarantees GPU decode before any spinning ─────────
+    const allUrls = [...new Set(drumImages.flat().map(i => i.src))];
+    await _preloadImages(allUrls);
+
+    // ── Build DOM ────────────────────────────────────────────────
+    inlineContainer.querySelector('.minigen-slot')?.remove();
+
+    const slotDiv = document.createElement('div');
+    slotDiv.className = 'minigen-slot';
+
+    drumImages.forEach((strip, di) => {
+        const drum    = document.createElement('div');
+        drum.className = 'minigen-slot__drum';
+        drum.dataset.drum = di;
+
+        const stripEl = document.createElement('div');
+        stripEl.className = 'minigen-slot__strip';
+
+        // Each cell: wrapper (pitch/gaps) + <img> from module cache — never blank
+        strip.forEach(imgData => {
+            const cell    = document.createElement('div');
+            cell.className = 'minigen-slot__cell';
+            const imgEl   = document.createElement('img');
+            imgEl.className  = 'minigen-slot__cell-img';
+            imgEl.alt        = '';
+            imgEl.draggable  = false;
+            // Reuse the already-decoded Image from cache; fallback to plain src
+            const cached = _imgCache.get(imgData.src);
+            imgEl.src = cached ? cached.src : imgData.src;
+            cell.appendChild(imgEl);
+            stripEl.appendChild(cell);
         });
 
-        function finish(result, chosenCellEl) {
-            overlay.querySelectorAll('.minigen-cell').forEach(c => { c.style.pointerEvents = 'none'; });
-            if (chosenCellEl) {
-                overlay.querySelectorAll('.minigen-cell').forEach(c => {
-                    if (c !== chosenCellEl) c.classList.add('minigen-cell--hidden');
-                });
-                chosenCellEl.classList.add('minigen-cell--pressed');
-                const ctxRect  = container.getBoundingClientRect();
-                const cellRect = chosenCellEl.getBoundingClientRect();
-                const spawnCoords = {
-                    x: (cellRect.left - ctxRect.left) + cellRect.width  * 0.5,
-                    y: (cellRect.top  - ctxRect.top)  + cellRect.height * 0.45,
-                    r: ctxRect.width / 1080,
-                };
+        drum.appendChild(stripEl);
+        slotDiv.appendChild(drum);
+    });
+
+    inlineContainer.appendChild(slotDiv);
+
+    // Sync drum beat-pulse to current rhythm phase (same logic as _applyBeatPulse)
+    {
+        const phase   = isRhythmActive() ? getBeatPhase() : 0; // 0..1
+        const baseDelay = -Math.round(phase * 250);             // align to beat
+        slotDiv.querySelectorAll('.minigen-slot__drum').forEach((d, i) => {
+            d.style.animationDelay = (baseDelay - i * 20) + 'ms'; // tiny stagger per drum
+        });
+    }
+
+    // ── Measure layout (2 frames to ensure CSS applies) ───────────
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+    const drumEl = slotDiv.querySelector('.minigen-slot__drum');
+    const cellEl = slotDiv.querySelector('.minigen-slot__cell');
+    // Use offsetHeight (layout size) — NOT getBoundingClientRect which is affected
+    // by the beat-pulse transform:scale() animation running on the drum.
+    // offsetHeight ignores CSS transforms and returns the true CSS pixel height.
+    const cellH  = cellEl.offsetHeight;
+    // cOff = 0 by design: cell height === drum inner height (both 184r in CSS)
+    const totalH = cellH * STRIP_SIZE;
+
+    // px/ms per drum — speed in cells/sec, normalised to actual pixel cellH
+    const speeds = SPEEDS_PPS.map(s => (s * cellH) / 1000);
+
+    const drumEls  = Array.from(slotDiv.querySelectorAll('.minigen-slot__drum'));
+    const stripEls = drumEls.map(d => d.querySelector('.minigen-slot__strip'));
+
+    // cell[0] starts at drum top (translateY=0) — visible immediately
+    stripEls.forEach(s => { s.style.transform = 'translateY(0px)'; });
+
+    // ── Spin state ───────────────────────────────────────────────
+    const distances    = [0, 0, 0]; // monotonically increasing scroll distance per drum
+    const stopped      = [false, false, false];
+    const resolvedDrums = [];
+    let nextToStop     = 0;
+    let _spinRaf       = null;
+    let lastNow        = performance.now();
+
+    function spinFrame(now) {
+        const dt = now - lastNow;
+        lastNow  = now;
+        drumEls.forEach((_, i) => {
+            if (stopped[i]) return;
+            distances[i] += speeds[i] * dt;
+            // translateY = -pos: strip scrolls upward, images enter from below
+            // Seamless: at pos=totalH the strip wraps; cell[5]=cell[0] copy masks the jump
+            const pos = distances[i] % totalH;
+            stripEls[i].style.transform = `translateY(${(-pos).toFixed(1)}px)`;
+        });
+        _spinRaf = requestAnimationFrame(spinFrame);
+    }
+    _spinRaf = requestAnimationFrame(spinFrame);
+
+    const emojiCtx = document.querySelector('.game-container') || document.body;
+
+    return new Promise(resolve => {
+        function stopDrum(drumIdx) {
+            if (stopped[drumIdx]) return;
+            stopped[drumIdx] = true;
+
+            // Snap: round to nearest cell boundary.
+            // Use rawIdx (0..STRIP_SIZE) for snapY to avoid reverse-jump when pos≈totalH:
+            //   rawIdx=5 → snapY = -(5*cellH) = position of the 6th duplicate cell (smooth).
+            //   rawIdx%STRIP_SIZE → still correct image lookup (0..4).
+            const pos     = distances[drumIdx] % totalH;
+            const rawIdx  = Math.round(pos / cellH);        // 0..STRIP_SIZE inclusive
+            const cellIdx = rawIdx % STRIP_SIZE;            // 0..4 for image lookup
+            const snapY   = -(rawIdx * cellH);              // proximity-preserving snap
+
+            stripEls[drumIdx].style.transition = 'transform 120ms cubic-bezier(0.22, 1, 0.36, 1)';
+            stripEls[drumIdx].style.transform  = `translateY(${snapY.toFixed(1)}px)`;
+
+            drumEls[drumIdx].classList.add('minigen-slot__drum--stopped');
+            drumEls[drumIdx].classList.add('minigen-slot__drum--snap');
+            setTimeout(() => drumEls[drumIdx].classList.remove('minigen-slot__drum--snap'), 200);
+
+            resolvedDrums[drumIdx] = drumImages[drumIdx][cellIdx];
+
+            if (stopped.every(Boolean)) {
+                if (_spinRaf) { cancelAnimationFrame(_spinRaf); _spinRaf = null; }
+                const combo = _evalSlotCombo(resolvedDrums);
+                // Show result overlay immediately; resolve only on next click
                 setTimeout(() => {
-                    chosenCellEl.classList.remove('minigen-cell--pressed');
-                    chosenCellEl.classList.add('minigen-cell--collapsing');
-                    _spawnEmojiParticleAt(container, spawnCoords, RESULT_EMOJI[result] || '');
-                }, 35);
-                setTimeout(() => {
-                    overlay.classList.remove('minigen-overlay--visible');
-                    overlay.addEventListener('transitionend', () => overlay.remove(), { once: true });
-                    resolve(result);
-                }, 150);
-            } else {
-                overlay.classList.remove('minigen-overlay--visible');
-                overlay.addEventListener('transitionend', () => overlay.remove(), { once: true });
-                resolve('skip');
+                    _showSlotResult(slotDiv, combo, emojiCtx, () => {
+                        slotDiv.remove();
+                        resolve({ result: combo.result, slotMult: combo.mult });
+                    });
+                }, 80); // tiny pause so snap finishes before overlay appears
             }
         }
 
-        overlay.querySelectorAll('.minigen-cell').forEach(cell => {
-            cell.addEventListener('click', () => {
-                checkBeatHit(); // weak beat
-                const idx = parseInt(cell.dataset.idx, 10);
-                // isWrong = true means it's a good image — wrong to exclude
-                finish(cells[idx].isWrong ? 'wrong' : 'correct', cell);
-            });
+        slotDiv.addEventListener('click', () => {
+            if (nextToStop < 3) {
+                stopDrum(nextToStop);
+                nextToStop++;
+            }
+            // clicks after all stopped are handled by result overlay
         });
-
-        overlay.querySelector('.minigen-skip-btn').addEventListener('click', () => finish('skip', null));
     });
+}
+
+function _showSlotResult(container, combo, emojiCtx, onDone) {
+    const overlay = document.createElement('div');
+    overlay.className = 'minigen-slot__result-overlay';
+
+    const label = combo.mult > 0
+        ? (combo.mult >= 50 ? `×${combo.mult} 🎰` : `×${combo.mult}`)
+        : '✗';
+    overlay.textContent = label;
+    overlay.dataset.result = combo.result;
+
+    container.appendChild(overlay);
+    requestAnimationFrame(() => overlay.classList.add('minigen-slot__result-overlay--visible'));
+
+    const ctxRect = emojiCtx.getBoundingClientRect();
+    const cRect   = container.getBoundingClientRect();
+    if (combo.mult > 0) {
+        _spawnEmojiParticleAt(emojiCtx, {
+            x: (cRect.left - ctxRect.left) + cRect.width  * 0.5,
+            y: (cRect.top  - ctxRect.top)  + cRect.height * 0.4,
+            r: ctxRect.width / 1080,
+        }, combo.mult >= 50 ? '🎰' : (combo.result === 'correct' ? '✨' : '💀'));
+    }
+
+    // Wait for click anywhere on overlay — small delay prevents click-through
+    // from the 3rd-drum stop tap
+    setTimeout(() => {
+        overlay.addEventListener('click', () => onDone(), { once: true });
+    }, 250);
+}
+
+// ─────────────────────────────────────────────────────────────
+// Public API
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * @param {object} [options]
+ * @param {string[]|null} [options.tags]
+ * @param {string} [options.mode]  'sort' | 'study' | 'gen'
+ * @param {HTMLElement|null} [options.inlineContainer]
+ * @returns {Promise<{ result: string, reactionMs: number, slotMult: number }>}
+ */
+export async function runMinigen({ tags = null, mode = 'sort', inlineContainer = null } = {}) {
+    const t0 = performance.now();
+    let result   = 'skip';
+    let slotMult = 1;
+    try {
+        const manifest = await _loadManifest();
+        if (!manifest?.groups?.length) return { result: 'skip', reactionMs: 0, slotMult: 1 };
+
+        if (mode === 'gen') {
+            const r = await _showSlotPopup(manifest, { allowedTags: tags || undefined, inlineContainer });
+            result   = r.result;
+            slotMult = r.slotMult;
+        } else {
+            // 'sort' and 'study' both use the inline picker
+            result = await _showSortPopup(manifest, { allowedTags: tags || undefined, inlineContainer });
+        }
+    } catch (e) {
+        console.warn('[minigen] runMinigen error:', e);
+    }
+    const reactionMs = performance.now() - t0;
+    return { result, reactionMs, slotMult };
 }
 

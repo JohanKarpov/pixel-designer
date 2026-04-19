@@ -620,10 +620,6 @@ export function doSmokeBreak() {
     // Release stress gradually over the smoke duration (see tickSmokeRelief, called by HUD ticker)
     state.smokeRelief = { total: relief, applied: 0, start: Date.now(), duration: _smokeDurationMs };
 
-    import('./audio.js').then(({ sfx }) => {
-        sfx(Math.random() < 0.5 ? 'smokingLong' : 'smokingShort');
-    }).catch(() => {});
-
     saveState();
     _notifyStateChanged();
     return true;

@@ -12,7 +12,7 @@ import {
     isOrderStartLocked,
     seedOrdersFromQueue,
 } from '../core/economy.js';
-import { runMinigen, getLastBeatQuality } from '../core/minigen.js';
+import { runMinigen } from '../core/minigen.js';
 import {
     initRhythm,
     startRhythm,
@@ -20,10 +20,7 @@ import {
     checkBeatHit,
     getRhythmMultiplier,
     onRhythmComboChange,
-    onBeatCheck,
     getBeatPhase,
-    getElapsedBeats,
-    waitForNextBeat,
 } from '../core/rhythm.js';
 
 // ─────────────────────────────────────────────────────────────
@@ -57,7 +54,6 @@ const _rhythmBar       = document.getElementById('rhythm-bar');
 const _rhythmComboVal  = document.getElementById('rhythm-combo-val');
 const _rhythmBarFill   = document.getElementById('rhythm-bar-fill');
 const _rhythmToast     = document.getElementById('rhythm-toast');
-const _rhythmMetroInd  = document.getElementById('rhythm-metro-indicator');
 const _beatFlash       = document.getElementById('work-beat-flash');
 
 // ─────────────────────────────────────────────────────────────
@@ -77,7 +73,6 @@ export function onEnterWork() {
         if (_rhythmBar) _rhythmBar.style.display = 'flex';
     });
     onRhythmComboChange(_onRhythmUpdate);
-    onBeatCheck(_handleBeatCheck);
 }
 
 export function onLeaveWork() {
@@ -86,8 +81,14 @@ export function onLeaveWork() {
     if (_rhythmBar) _rhythmBar.style.display = 'none';
     _chainCancelled = true;
     _generating     = false;
-    _clearGapState();
-    onBeatCheck(null);
+    // Force-resolve any pending runMinigen so the chain's finally block runs cleanly
+    if (_cancelMinigen) { _cancelMinigen(); _cancelMinigen = null; }
+    // Belt-and-suspenders: ensure zone is collapsed even if finally didn't run yet
+    if (_genZone) {
+        _genZone.classList.remove('work-gen-zone--active');
+        _genZone.querySelector('.minigen-images-inline')?.remove();
+        _genZone.querySelector('.minigen-slot')?.remove();
+    }
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -111,31 +112,10 @@ function _stopTick() {
 // Pendulum + beat-flash driven by getBeatPhase(). Called every RAF frame.
 // Pendulum: sin(totalBeats * π) → period = 2 beats, center on every beat.
 // At center (phase=0) = on beat = PERFECT zone. Extremes = between beats = MISS zone.
-let _metroBeatClass  = false;
-let _lastMetroXPx    = 0;   // recorded each frame for click-dot placement
 function _updateBeatCues() {
-    const phase      = getBeatPhase();   // 0..1 fractional within current beat
-    const totalBeats = getElapsedBeats(); // non-fractional total
+    const phase = getBeatPhase(); // 0..1 fractional within current beat
 
-    // Pendulum — sin(totalBeats * π), period = 2 beats (1000ms at 120 BPM)
-    if (_rhythmMetroInd) {
-        const track    = _rhythmMetroInd.parentElement;
-        const halfSpan = (track.offsetWidth - _rhythmMetroInd.offsetWidth) / 2;
-        const xPx      = Math.sin(totalBeats * Math.PI) * halfSpan;
-        _lastMetroXPx  = xPx;
-        _rhythmMetroInd.style.setProperty('--metro-x', xPx.toFixed(1) + 'px');
-
-        // Flash glow exactly on beat
-        const onBeat = phase < 0.06 || phase > 0.97;
-        if (onBeat && !_metroBeatClass) {
-            _metroBeatClass = true;
-            _rhythmMetroInd.classList.add('rhythm-metro__indicator--beat');
-            setTimeout(() => {
-                _metroBeatClass = false;
-                _rhythmMetroInd?.classList.remove('rhythm-metro__indicator--beat');
-            }, 60);
-        }
-    }
+    // Pendulum hidden — rhythm is passive bonus, no visual metronome
 
     // Beat-flash background — asymmetric sawtooth
     if (_beatFlash && !_beatFlash.classList.contains('work-beat-flash--miss')) {
@@ -287,155 +267,6 @@ function _updateDayTimerBar() {
 const TOAST_LABELS = { perfect: 'PERFECT', good: 'GOOD', ok: 'OK', miss: 'MISS' };
 let _toastTimeout = null;
 
-const QUALITY_COLOR = {
-    perfect: '#22c55e',   // saturated green
-    good:    '#86efac',   // desaturated light green
-    ok:      '#9ca3af',   // gray
-    miss:    '#f87171',   // unsaturated red
-};
-
-/**
- * Show beat-quality feedback in the gen-zone during the gap between rounds.
- * Clears automatically when the next round appends new cards.
- */
-function _showGenFeedback(beatQuality) {
-    if (!_genZone) return;
-    _genZone.querySelector('.gen-feedback')?.remove();
-
-    const label = TOAST_LABELS[beatQuality];
-    if (!label) return;
-
-    if (beatQuality === 'miss') {
-        _showMissFlash();
-        // For miss: brief text (240ms), then zone stays clickable until auto-advance
-        const el = document.createElement('div');
-        el.className = 'gen-feedback gen-feedback--miss';
-        el.innerHTML = `<span class="gen-feedback__quality" style="--quality-color:${QUALITY_COLOR.miss}">${label}</span>`;
-        _genZone.appendChild(el);
-        setTimeout(() => el.remove(), 240);
-        return;
-    }
-
-    const comboStr = state.comboCount > 0 ? `🔥${state.comboCount}` : '';
-    const el = document.createElement('div');
-    el.className = `gen-feedback gen-feedback--${beatQuality}`;
-    el.innerHTML =
-        `<span class="gen-feedback__quality" style="--quality-color:${QUALITY_COLOR[beatQuality] || QUALITY_COLOR.ok}">${label}</span>` +
-        (comboStr ? `<span class="gen-feedback__combo">${comboStr}</span>` : '') +
-        `<span class="gen-feedback__tap-hint">tap</span>`;
-    _genZone.appendChild(el);
-    // No auto-cleanup — element is removed when next round appends new cards
-}
-
-// ─────────────────────────────────────────────────────────────
-// 2-beat interactive gap between minigen rounds
-// ─────────────────────────────────────────────────────────────
-
-/**
- * Returns a promise that resolves when the player taps the gen-zone
- * OR after 2000ms (2 beats) from the original card-spawn time.
- */
-function _waitForNextRound(spawnTime) {
-    _clearGapState();
-    return new Promise(resolve => {
-        const elapsed  = performance.now() - spawnTime;
-        const remaining = Math.max(80, 2000 - elapsed);
-
-        let resolved = false;
-        const done = () => {
-            if (resolved) return;
-            resolved = true;
-            _clearGapState();
-            resolve();
-        };
-
-        _gapAutoTimer    = setTimeout(done, remaining);
-        _gapClickHandler = done;
-
-        if (_genZone) {
-            _genZone.classList.add('work-gen-zone--gap');
-            _genZone.addEventListener('click', _gapClickHandler, { once: true });
-        }
-    });
-}
-
-function _clearGapState() {
-    if (_gapAutoTimer) { clearTimeout(_gapAutoTimer); _gapAutoTimer = null; }
-    if (_genZone && _gapClickHandler) {
-        _genZone.removeEventListener('click', _gapClickHandler);
-    }
-    _gapClickHandler = null;
-    if (_genZone) _genZone.classList.remove('work-gen-zone--gap');
-}
-
-// ─────────────────────────────────────────────────────────────
-// Metro click dot + zone flash  (fired via onBeatCheck hook)
-// ─────────────────────────────────────────────────────────────
-
-const _ZONE_PCT = {
-    perfect: [[30, 70]],
-    good:    [[15, 30], [70, 85]],
-    ok:      [[ 8, 15], [85, 92]],
-    miss:    [[ 0,  8], [92, 100]],
-};
-const _ZONE_FLASH_COLOR = {
-    perfect: 'rgba(74,222,128,0.70)',
-    good:    'rgba(134,239,172,0.60)',
-    ok:      'rgba(156,163,175,0.55)',
-    miss:    'rgba(248,113,113,0.70)',
-};
-
-function _handleBeatCheck(quality) {
-    _showClickDot(_lastMetroXPx);
-    _showZoneFlash(quality);
-}
-
-function _showClickDot(xPx) {
-    const track = document.getElementById('rhythm-metro');
-    if (!track) return;
-    const dot = document.createElement('div');
-    dot.className = 'rhythm-metro__click-dot';
-    dot.style.setProperty('--dot-x', xPx.toFixed(1) + 'px');
-    track.appendChild(dot);
-    setTimeout(() => dot.remove(), 220);
-}
-
-function _showZoneFlash(quality) {
-    const track = document.getElementById('rhythm-metro');
-    if (!track) return;
-    const ranges = _ZONE_PCT[quality];
-    const color  = _ZONE_FLASH_COLOR[quality];
-    if (!ranges || !color) return;
-
-    // Build gradient: highlight only the target zone ranges
-    const boundaries = new Set([0, 100]);
-    ranges.forEach(([a, b]) => { boundaries.add(a); boundaries.add(b); });
-    const pts = [...boundaries].sort((a, b) => a - b);
-
-    const parts = [];
-    for (let i = 0; i < pts.length - 1; i++) {
-        const inZone = ranges.some(([a, b]) => pts[i] >= a && pts[i + 1] <= b);
-        parts.push(`${inZone ? color : 'transparent'} ${pts[i]}% ${pts[i + 1]}%`);
-    }
-
-    const el = document.createElement('div');
-    el.style.cssText =
-        'position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:4;' +
-        `background:linear-gradient(to right,${parts.join(',')});` +
-        'opacity:1;transition:opacity 100ms ease-out;';
-    track.appendChild(el);
-    // Trigger fade-out on next frame
-    requestAnimationFrame(() => requestAnimationFrame(() => { el.style.opacity = '0'; }));
-    setTimeout(() => el.remove(), 130);
-}
-
-function _showMissFlash() {
-    if (!_beatFlash) return;
-    _beatFlash.classList.add('work-beat-flash--miss');
-    _beatFlash.style.opacity = '';   // let CSS !important take over
-    setTimeout(() => _beatFlash.classList.remove('work-beat-flash--miss'), 200);
-}
-
 function _onRhythmUpdate(combo, mult) {
     if (!_rhythmComboVal) return;
     _rhythmComboVal.textContent = '\xd7' + mult.toFixed(1);
@@ -473,12 +304,7 @@ function _bindButtons() {
 
 let _generating = false;
 let _chainCancelled = false;
-let _roundSpawnTime = 0;
-let _gapClickHandler = null;
-let _gapAutoTimer = null;
-
-/** Small delay helper (ms) */
-const _sleep = ms => new Promise(r => setTimeout(r, ms));
+let _cancelMinigen = null; // call to force-resolve current runMinigen with 'skip'
 
 /**
  * Single ⚡ press launches a full generation chain:
@@ -513,21 +339,27 @@ async function _onGenerate() {
     try {
         while (state.activeOrder && !_chainCancelled) {
             const order = state.activeOrder;
-            _roundSpawnTime = performance.now();
-            const { result, reactionMs } = await runMinigen({
-                tags: order.miniGenTags || null,
-                mode: order.miniGenMode || 'standard',
-                inlineContainer: _genZone || null,
-            });
 
-            generateForActiveOrder(result, reactionMs, getRhythmMultiplier());
+            // Build a cancel escape-hatch so onLeaveWork can cleanly abort this await
+            let _abortFn = null;
+            const _abortPromise = new Promise(res => {
+                _abortFn = () => res({ result: 'skip', reactionMs: 0, slotMult: 1 });
+            });
+            _cancelMinigen = _abortFn;
+
+            const rawMode = order.miniGenMode || 'standard';
+            const mode    = rawMode === 'standard' ? 'gen' : rawMode;
+            const { result, reactionMs, slotMult } = await Promise.race([
+                runMinigen({ tags: order.miniGenTags || null, mode, inlineContainer: _genZone || null }),
+                _abortPromise,
+            ]);
+            _cancelMinigen = null;
+
+            const effectiveMult = (slotMult > 1) ? slotMult : getRhythmMultiplier();
+            generateForActiveOrder(result, reactionMs, effectiveMult);
             _render();
 
-            // Quality feedback + beat-aligned gap (only between rounds, not after final pick)
-            if (state.activeOrder && !_chainCancelled) {
-                _showGenFeedback(getLastBeatQuality());
-                await _waitForNextRound(_roundSpawnTime);
-            }
+            // Rounds run back-to-back — no gap between them
         }
     } catch (err) {
         console.error('[work] chain error:', err);
