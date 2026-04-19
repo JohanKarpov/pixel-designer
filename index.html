@@ -19,7 +19,18 @@
       <div class="loading-screen__bar" id="loading-bar"></div>
     </div>
     <div class="loading-screen__pct" id="loading-pct">0%</div>
-  </div>
+    <!-- Shown after load completes -->
+    <div class="loading-screen__actions" id="loading-actions" hidden>
+      <button class="loading-screen__start-btn" id="loading-start-btn">▶ Старт</button>
+
+      <div class="loading-screen__vol">
+        <span class="loading-screen__vol-label">🔊 Громкость</span>
+        <input class="loading-screen__vol-slider" id="ls-vol-slider" type="range" min="0" max="100" value="28">
+        <span class="loading-screen__vol-pct" id="ls-vol-pct">28%</span>
+      </div>
+
+      <button class="loading-screen__reset-btn" id="ls-reset-btn">🗑️ Сброс кэша</button>
+    </div>  </div>
 </div>
 
 <div id="app">

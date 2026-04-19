@@ -156,14 +156,52 @@ setEconomyCallbacks({
 });
 calcOfflineOnStartup();
 
-// ── Preload all images, then reveal game ───────────────────────────────
-const _loadingBar = document.getElementById('loading-bar');
-const _loadingPct = document.getElementById('loading-pct');
+// ── Preload all images, then show START button ───────────────────────
+const _loadingBar     = document.getElementById('loading-bar');
+const _loadingPct     = document.getElementById('loading-pct');
+const _loadingActions = document.getElementById('loading-actions');
+const _loadingStartBtn = document.getElementById('loading-start-btn');
+const _lsVolSlider    = document.getElementById('ls-vol-slider');
+const _lsVolPct       = document.getElementById('ls-vol-pct');
+const _lsResetBtn     = document.getElementById('ls-reset-btn');
+
+// Init volume slider from saved value
+const _initVol = Math.round(getBgmVolume() * 100);
+if (_lsVolSlider) {
+    _lsVolSlider.value = _initVol;
+    if (_lsVolPct) _lsVolPct.textContent = `${_initVol}%`;
+    _lsVolSlider.addEventListener('input', () => {
+        const v = parseInt(_lsVolSlider.value, 10);
+        if (_lsVolPct) _lsVolPct.textContent = `${v}%`;
+        setBgmVolume(v / 100);
+        setRhythmVolume(v / 100);
+        document.querySelectorAll('.vol-btn').forEach(b => b.textContent = v === 0 ? '🔇' : '🔊');
+    });
+}
+if (_lsResetBtn) {
+    _lsResetBtn.addEventListener('click', async () => {
+        if (!confirm('Сбросить кэш сервис воркера? Сохранение игры не тронется.')) return;
+        if ('caches' in window) {
+            const keys = await caches.keys();
+            await Promise.all(keys.map(k => caches.delete(k)));
+        }
+        location.reload();
+    });
+}
+
 await preloadAssets(p => {
     const pct = Math.round(p * 100);
     if (_loadingBar) _loadingBar.style.width = `${pct}%`;
     if (_loadingPct) _loadingPct.textContent = `${pct}%`;
 });
+
+// Show START button — wait for user gesture to init AudioContext
+if (_loadingActions) _loadingActions.hidden = false;
+await new Promise(resolve => {
+    if (_loadingStartBtn) _loadingStartBtn.addEventListener('click', resolve, { once: true });
+    else resolve(); // fallback: no button found
+});
+
 const _loadingScreen = document.getElementById('loading-screen');
 if (_loadingScreen) {
     _loadingScreen.classList.add('loading-screen--done');
