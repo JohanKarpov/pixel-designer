@@ -60,6 +60,7 @@ export const state = {
         cigsAutoBuy: false,
         energizerActive: false,
         vitaminsActive: false,
+        juice: 0,
     },
     upgrades: {
         autogen: false,
@@ -183,10 +184,11 @@ export const state = {
     claimedAchievements: {},
 
     // ── Day Cycle ──────────────────────────────────────────────────────────
-    currentPhase: 'planning',      // 'planning' | 'work' | 'results' | 'rest'
+    currentPhase: 'rest',          // 'planning' | 'work' | 'results' | 'rest'
+    restMorning: true,             // true = morning sub-state of REST
     dayCount: 1,
     dayOfWeek: 1,                  // 1–WEEKEND_CYCLE_DAYS; accumulated stress resets when wraps to 1
-    inGameHour: 9.0,               // float 9.0→18.0; advanced by work timer and REST activities
+    inGameHour: 8.0,               // float 8.0→9.0 (morning) or 9.0→18.0 (work); advanced by timer and REST activities
     accumulatedStress: 0,          // 0–100; persists across days, resets on weekends
     stressHistory: [],             // [{h: float, v: number}] stress snapshots during WORK
 
@@ -293,11 +295,18 @@ export function loadState() {
             }
         }
 
-        // Restore Decimal fields (JSON serializes them as strings)
+        // Restore Decimal fields — always recreate to handle old saves where they were
+        // stored as plain objects {m,e} (Object.assign above corrupts Decimal internals).
         const _decimalFields = ['funds', 'xp', 'xpToNext', 'agentLastFundsSnapshot'];
         for (const f of _decimalFields) {
-            if (state[f] !== undefined && !(state[f] instanceof Decimal))
-                state[f] = new Decimal(state[f] ?? 0);
+            const v = state[f];
+            if (v === undefined || v === null) { state[f] = new Decimal(0); continue; }
+            if (v instanceof Decimal) {
+                // Re-wrap: guards against Object.assign corrupting internal {m,e}
+                state[f] = new Decimal(v.toString());
+            } else {
+                state[f] = new Decimal(v);
+            }
         }
         const _decimalStatFields = ['totalMoneyEarned', 'totalMoneySpent'];
         for (const f of _decimalStatFields) {
@@ -377,5 +386,17 @@ export function loadState() {
         if (!state.nextDayBuffs || typeof state.nextDayBuffs !== 'object') state.nextDayBuffs = {};
         if (!state.restUsageCounts || typeof state.restUsageCounts !== 'object') state.restUsageCounts = {};
         if (!Array.isArray(state.orderQueue))         state.orderQueue         = [];
-        if (!Array.isArray(state.consumablePresets))  state.consumablePresets  = [];    } catch (_) { /* corrupted save — start fresh */ }
+        if (!Array.isArray(state.consumablePresets))  state.consumablePresets  = [];
+
+        // Migration: old saves may have inGameHour=18 while restMorning=true
+        // (restMorning was added later and defaults to true; inGameHour from evening bleeds in).
+        if (state.restMorning && state.inGameHour > 9.0) {
+            state.inGameHour = 8.0;
+        }
+        // Migration: if phase is 'planning' from an old save but it's a fresh day,
+        // ensure restMorning is false so the REST screen isn't shown on next cycle.
+        if (state.currentPhase !== 'rest') {
+            state.restMorning = false;
+        }
+    } catch (_) { /* corrupted save — start fresh */ }
 }

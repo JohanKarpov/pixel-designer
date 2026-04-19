@@ -1,4 +1,5 @@
 import { loadState, state }         from './src/core/state.js';
+import { Config }                   from './src/core/config.js';
 import {
     calcOfflineOnStartup,
     restorePhaseFromState,
@@ -19,6 +20,8 @@ import { onEnterPlanning }                      from './src/screens/planning.js'
 import { onEnterWork, onLeaveWork, onOrdersChanged, onStateChanged } from './src/screens/work.js';
 import { onEnterResults }           from './src/screens/results.js';
 import { onEnterRest, onLeaveRest }  from './src/screens/rest.js';
+import { onEnterUpgrades }           from './src/screens/upgrades.js';
+import { bindHelpButtons }           from './src/ui/help.js';
 import { playBgm, stopBgm, setBgmVolume, getBgmVolume } from './src/core/bgm.js';
 import { setRhythmVolume }           from './src/core/rhythm.js';
 import { preloadAssets }            from './src/core/preload.js';
@@ -60,7 +63,11 @@ export function showScreen(name) {
 }
 
 // Handle navigation requests dispatched by sub-screens (avoids circular imports)
-document.addEventListener('rest:navigate', e => showScreen(e.detail.screen));
+document.addEventListener('rest:navigate', e => {
+    const target = e.detail.screen;
+    showScreen(target);
+    if (target === 'upgrades') onEnterUpgrades();
+});
 
 // ── Phase change handler ────────────────────────────────────────────────────
 
@@ -98,6 +105,21 @@ function _onPhaseChange(phase, payload) {
 }
 
 // ── Init ────────────────────────────────────────────────────────────────────
+
+// Version check: if stored version ≠ current, wipe SW caches and reload once
+// so the browser fetches all fresh assets (SW activate will also clean up).
+// Game save data (localStorage SAVE_KEY) is deliberately NOT wiped.
+;(function _checkVersion() {
+    const storedVer = localStorage.getItem(Config.BUILD_VERSION_KEY);
+    if (storedVer === Config.BUILD_VERSION) return; // up to date
+    localStorage.setItem(Config.BUILD_VERSION_KEY, Config.BUILD_VERSION);
+    if ('caches' in window) {
+        caches.keys()
+            .then(keys => Promise.all(keys.map(k => caches.delete(k))))
+            .then(() => location.reload());
+        return; // don't continue init — page will reload
+    }
+})();
 
 loadState();
 setDayCycleCallbacks({
@@ -153,6 +175,8 @@ if (_phase === 'planning')      onEnterPlanning();
 else if (_phase === 'work')     onEnterWork();
 else if (_phase === 'results')  onEnterResults(state.dailyStats);
 else if (_phase === 'rest')     onEnterRest();
+
+bindHelpButtons();
 
 // ── Volume control ──────────────────────────────────────────────────────────
 

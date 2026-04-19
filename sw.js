@@ -4,7 +4,7 @@
 // Runtime caching: images and audio cached on first fetch (lazy).
 // Version bump CACHE_NAME to force re-cache on new deploy.
 
-const CACHE_NAME = 'pixel-designer-v1';
+const CACHE_NAME = 'pixel-designer-v0.3';
 
 // On localhost, skip all caching — always fetch fresh files
 const IS_DEV = self.location.hostname === 'localhost' || self.location.hostname === '127.0.0.1';
@@ -42,6 +42,10 @@ const PRECACHE_URLS = [
     './data/img/room/skill-monitor-light.png',
     './data/img/room/room-light-shadows.png',
     './data/img/room/windows-city-softlight.png',
+    './data/img/room/desk-deck.png',
+    // New screens and UI
+    './src/screens/upgrades.js',
+    './src/ui/help.js',
 ];
 
 // ── Install: precache critical files ─────────────────────────────────────────

@@ -1,8 +1,8 @@
 // src/screens/rest.js — REST phase UI (Concept C: room + hotspots)
 
 import { state, saveState }                                                     from '../core/state.js';
-import { startNextDay, doRestActivity, getRestHoursLeft, REST_ACTIVITIES }      from '../day/day-cycle.js';
-import { getPlayerDeckWithDefs, setCardEnabled }                                 from '../core/deck.js';
+import { startNextDay, sleepToMorning, doRestActivity, getRestHoursLeft, REST_ACTIVITIES } from '../day/day-cycle.js';
+import { getPlayerDeckWithDefs, setCardEnabled, ensurePlayerDeck }               from '../core/deck.js';
 import { startFlicker, stopFlicker, updateWindowOpacity, setChannelBoost }      from '../core/flicker.js';
 
 // ─────────────────────────────────────────────────────────────
@@ -10,11 +10,13 @@ import { startFlicker, stopFlicker, updateWindowOpacity, setChannelBoost }      
 // ─────────────────────────────────────────────────────────────
 
 const QUICK_META = {
-    smoke:  { icon: '🚬', name: 'Перекур',  buffLabel: '−10% стартового стресса'     },
-    coffee: { icon: '☕', name: 'Кофе',     buffLabel: '+0.5ч свободного времени'    },
+    smoke:          { icon: '🚬', name: 'Перекур',   buffLabel: '−0% стартового стресса'   },
+    coffee_morning: { icon: '☕',    name: 'Кофе',      buffLabel: '+1 энергия завтра'         },
+    coffee_evening: { icon: '☕',    name: 'Кофе',      buffLabel: '+1ч времени, +5 стресса' },
 };
 
 const OUTSIDE_META = {
+    // ── Evening ──
     walk:  {
         icon: '🚶',
         name: 'Прогулка',
@@ -33,6 +35,25 @@ const OUTSIDE_META = {
         story: 'Знакомое место, знакомые лица... и, возможно, новые.',
         effects: ['★ +5 известности'],
     },
+    // ── Morning ──
+    breakfast: {
+        icon: '🍳',
+        name: 'Завтрак',
+        story: 'Хороший завтрак — хорошее начало дня.',
+        effects: ['⚡ +1 энергия завтра'],
+    },
+    park: {
+        icon: '🌳',
+        name: 'Парк',
+        story: 'Полчаса в парке перед рабочим днём.',
+        effects: ['😌 −10% стартового стресса завтра'],
+    },
+    exercise: {
+        icon: '🏋️',
+        name: 'Зарядка',
+        story: 'Немного движения утром — и день пойдёт лучше.',
+        effects: ['📚 +15% XP за весь рабочий день'],
+    },
 };
 
 const SHOP_ITEMS = [
@@ -48,6 +69,19 @@ const SHOP_ITEMS = [
 
 const _dayLabel        = document.getElementById('rest-day-label');
 const _hourLabel       = document.getElementById('rest-hour');
+const _screenTitle     = document.getElementById('rest-screen-title');
+const _debugResetBtn   = document.getElementById('debug-reset-btn');
+if (_debugResetBtn) {
+    _debugResetBtn.addEventListener('click', async () => {
+        if (!confirm('Полный сброс? Сохранение и кэш будут удалены.')) return;
+        localStorage.clear();
+        if ('caches' in window) {
+            const keys = await caches.keys();
+            await Promise.all(keys.map(k => caches.delete(k)));
+        }
+        location.reload();
+    });
+}
 const _quickStrip      = document.getElementById('rest-quick-strip');
 const _hoursEl         = document.getElementById('rest-hours-left');
 const _outsideList     = document.getElementById('rest-outside-list');
@@ -79,8 +113,8 @@ let _windowEl          = null;
 // ─────────────────────────────────────────────────────────────
 
 export function onEnterRest() {
-    _dayLabel.textContent  = `День ${state.dayCount || 1}`;
-    _hourLabel.textContent = _fmtHour(state.inGameHour ?? 18);
+    ensurePlayerDeck();   // init deck on first visit (before planning)
+    _renderRestMode();
     _updateHours();
     _renderQuickStrip();
     _renderOutsideList();
@@ -88,7 +122,7 @@ export function onEnterRest() {
     _bindHotspots();
     _bindSheet();
     _bindPopup();
-    _btnNextDay.onclick = () => startNextDay();
+    _btnNextDay.onclick = _handleNextDayBtn;
 
     // Start ambient light flicker (3 channels)
     const monitorsEl    = document.getElementById('rest-layer-monitors');
@@ -121,7 +155,9 @@ function _updateHours() {
 
 function _renderQuickStrip() {
     _quickStrip.innerHTML = '';
-    const quickActs = REST_ACTIVITIES.filter(a => a.quick);
+    const isMorning = !!state.restMorning;
+    const quickActs = REST_ACTIVITIES.filter(a => a.quick &&
+        (a.morning === undefined || a.morning === isMorning));
     const hoursLeft = getRestHoursLeft();
 
     quickActs.forEach(act => {
@@ -167,7 +203,8 @@ function _renderQuickStrip() {
 
 function _renderOutsideList() {
     _outsideList.innerHTML = '';
-    const outsideActs = REST_ACTIVITIES.filter(a => !a.quick);
+    const isMorning   = !!state.restMorning;
+    const outsideActs = REST_ACTIVITIES.filter(a => !a.quick && a.morning === isMorning);
     const hoursLeft   = getRestHoursLeft();
 
     outsideActs.forEach(act => {
@@ -304,6 +341,7 @@ function _openSheet(type) {
         _renderDeckBuilder();
     } else if (type === 'shop') {
         _sheetTitle.textContent = '🛒 Магазин';
+        _shopActiveTab = 'shop';
         _renderShop();
     }
     _sheet.classList.add('rest-sheet--visible');
@@ -322,6 +360,19 @@ function _bindSheet() {
 // Deck builder (inside sheet)
 // ─────────────────────────────────────────────────────────────
 
+function _rewardLabel(def) {
+    const r = def.reward || {};
+    if (r.moneyPerGen) return `💰 ${r.moneyPerGen * (def.requiredGenerations || 1)}₽`;
+    if (r.xpPerGen) {
+        const total = r.xpPerGen * (def.requiredGenerations || 1) + (r.xpFlat || 0);
+        return `📚 ${total} XP`;
+    }
+    if (r.famePerGen) return `★ ${r.famePerGen * (def.requiredGenerations || 1)}`;
+    if (def.effect === 'draw_2') return '🃏 +2 карты';
+    if (def.effect === 'next_card_reward_plus20') return '✶ +20%';
+    return '—';
+}
+
 function _renderDeckBuilder() {
     const cards  = getPlayerDeckWithDefs();
     const active = cards.filter(({ entry }) => entry.enabled !== false).length;
@@ -330,37 +381,38 @@ function _renderDeckBuilder() {
         `<div class="deck-builder">` +
         `<div class="deck-builder__header">` +
         `<span class="deck-builder__title">Колода</span>` +
-        `<span class="deck-builder__count">Активных: ${active} / ${cards.length}</span>` +
+        `<span class="deck-builder__count">${active} / ${cards.length} активны</span>` +
         `</div>` +
-        `<div class="deck-builder__list">` +
+        `<div class="deck-grid">` +
         cards.map(({ entry, def }) => {
             const enabled = entry.enabled !== false;
-            return `<div class="deck-card deck-card--${def.rarity} ${enabled ? '' : 'deck-card--disabled'}" data-card-id="${def.id}">` +
-                `<div class="deck-card__header">` +
-                `<span class="deck-card__title">${def.title}</span>` +
-                `<span class="deck-card__rarity">${def.rarity}</span>` +
-                `</div>` +
-                `<div class="deck-card__desc">${def.description}</div>` +
-                `<div class="deck-card__footer">` +
-                `<span class="deck-card__cost">⚡${def.cost}</span>` +
-                `<span class="deck-card__type">${def.cardType}</span>` +
-                `<label class="deck-card__toggle">` +
-                `<input type="checkbox" data-card-id="${def.id}" ${enabled ? 'checked' : ''}> В колоде` +
-                `</label>` +
-                `</div>` +
+            const reward  = _rewardLabel(def);
+            const gens    = def.requiredGenerations ? `${def.requiredGenerations} ген` : '—';
+            return `<div class="deck-grid-card deck-grid-card--${def.rarity}${enabled ? '' : ' deck-grid-card--off'}" data-card-id="${def.id}" role="button" tabindex="0">` +
+                `<div class="deck-grid-card__icon">${def.icon || '🃏'}</div>` +
+                `<div class="deck-grid-card__title">${def.title}</div>` +
+                `<div class="deck-grid-card__gens">${gens}</div>` +
+                `<div class="deck-grid-card__reward">${reward}</div>` +
+                `<div class="deck-grid-card__state">${enabled ? '✓' : '✕'}</div>` +
                 `</div>`;
         }).join('') +
         `</div>` +
         `</div>`;
 
-    _sheetBody.querySelectorAll('input[data-card-id]').forEach(input => {
-        input.addEventListener('change', () => {
-            setCardEnabled(input.dataset.cardId, input.checked);
-            const cardEl = _sheetBody.querySelector(`.deck-card[data-card-id="${input.dataset.cardId}"]`);
-            if (cardEl) cardEl.classList.toggle('deck-card--disabled', !input.checked);
+    _sheetBody.querySelectorAll('.deck-grid-card[data-card-id]').forEach(card => {
+        card.addEventListener('click', () => {
+            const id         = card.dataset.cardId;
+            const wasEnabled = !card.classList.contains('deck-grid-card--off');
+            if (wasEnabled) {
+                const disabledCount = getPlayerDeckWithDefs().filter(({ entry }) => entry.enabled === false).length;
+                if (disabledCount >= 3) { _showToast('Можно отключить не более 3 карт'); return; }
+            }
+            setCardEnabled(id, !wasEnabled);
+            card.classList.toggle('deck-grid-card--off', wasEnabled);
+            card.querySelector('.deck-grid-card__state').textContent = wasEnabled ? '✕' : '✓';
             const newActive = getPlayerDeckWithDefs().filter(({ entry }) => entry.enabled !== false).length;
             const counter = _sheetBody.querySelector('.deck-builder__count');
-            if (counter) counter.textContent = `Активных: ${newActive} / ${cards.length}`;
+            if (counter) counter.textContent = `${newActive} / ${cards.length} активны`;
         });
     });
 }
@@ -369,30 +421,134 @@ function _renderDeckBuilder() {
 // Shop (inside sheet)
 // ─────────────────────────────────────────────────────────────
 
-function _renderShop() {
-    _sheetBody.innerHTML = `<div class="shop-grid">${
-        SHOP_ITEMS.map(item => {
-            const funds     = state.funds?.toNumber ? state.funds.toNumber() : (state.funds || 0);
-            const canAfford = funds >= item.price;
-            return `<div class="shop-item ${canAfford ? '' : 'shop-item--broke'}">` +
-                `<span class="shop-item__icon">${item.icon}</span>` +
-                `<div class="shop-item__info">` +
-                `<span class="shop-item__name">${item.name}</span>` +
-                `<span class="shop-item__desc">${item.desc}</span>` +
-                `</div>` +
-                `<button class="btn btn--ghost shop-item__btn" data-shop-id="${item.id}" ${canAfford ? '' : 'disabled'}>` +
-                `${item.price}₽</button>` +
-                `</div>`;
-        }).join('')
-    }</div>`;
+let _shopActiveTab = 'shop';
 
-    _sheetBody.querySelectorAll('[data-shop-id]').forEach(btn => {
+function _renderShop() {
+    _sheetBody.innerHTML =
+        `<div class="shop-tabs">` +
+        `<button class="shop-tab${_shopActiveTab === 'shop' ? ' shop-tab--active' : ''}" data-stab="shop">🛒 Магазин</button>` +
+        `<button class="shop-tab${_shopActiveTab === 'inv'  ? ' shop-tab--active' : ''}" data-stab="inv">🎒 Инвентарь</button>` +
+        `</div>` +
+        `<div id="shop-tab-content"></div>`;
+
+    _sheetBody.querySelectorAll('[data-stab]').forEach(btn => {
         btn.addEventListener('click', () => {
-            _buyShopItem(btn.dataset.shopId);
-            _renderShop();
-            _updateNotificationDots();
+            _shopActiveTab = btn.dataset.stab;
+            _sheetBody.querySelectorAll('[data-stab]').forEach(b =>
+                b.classList.toggle('shop-tab--active', b.dataset.stab === _shopActiveTab));
+            _renderShopTab();
         });
     });
+    _renderShopTab();
+}
+
+function _renderShopTab() {
+    const el = document.getElementById('shop-tab-content');
+    if (!el) return;
+    if (_shopActiveTab === 'shop') {
+        el.innerHTML = `<div class="shop-grid">${
+            SHOP_ITEMS.map(item => {
+                const funds     = state.funds?.toNumber ? state.funds.toNumber() : (state.funds || 0);
+                const canAfford = funds >= item.price;
+                const stock     = _itemStockLabel(item.id);
+                return `<div class="shop-item${canAfford ? '' : ' shop-item--broke'}">` +
+                    `<span class="shop-item__icon">${item.icon}</span>` +
+                    `<div class="shop-item__info">` +
+                    `<span class="shop-item__name">${item.name}</span>` +
+                    `<span class="shop-item__desc">${item.desc}</span>` +
+                    `<span class="shop-item__stock">${stock}</span>` +
+                    `</div>` +
+                    `<button class="btn btn--ghost shop-item__btn" data-shop-id="${item.id}" ${canAfford ? '' : 'disabled'}>` +
+                    `${item.price}₽</button>` +
+                    `</div>`;
+            }).join('')
+        }</div>`;
+        el.querySelectorAll('[data-shop-id]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                _buyShopItem(btn.dataset.shopId);
+                _renderShopTab();
+                _updateNotificationDots();
+            });
+        });
+    } else {
+        _renderInventory(el);
+    }
+}
+
+function _itemStockLabel(id) {
+    switch (id) {
+        case 'cigs':      return `В запасе: ${state.goods.cigarettes ?? 0} шт`;
+        case 'energizer': return state.goods.energizerActive ? '✓ Активен' : 'Нет';
+        case 'vitamins':  return state.goods.vitaminsActive  ? '✓ Активны' : 'Нет';
+        case 'juice':     return `В запасе: ${state.goods.juice ?? 0} шт`;
+        default:          return '';
+    }
+}
+
+function _renderInventory(el) {
+    const rows = [
+        {
+            icon: '🚬', name: 'Сигареты',
+            count: `${state.goods.cigarettes ?? 0} шт`,
+            note: 'Быстрые действия → Перекур',
+            canUse: false,
+        },
+        {
+            icon: '⚡', name: 'Энергетик',
+            count: state.goods.energizerActive ? '✓ Активен' : '—',
+            note: '+20% скорость генераций в рабочий день',
+            canUse: false,
+        },
+        {
+            icon: '💊', name: 'Витамины',
+            count: state.goods.vitaminsActive ? '✓ Активны' : '—',
+            note: 'Замедляют стресс-распад в рабочий день',
+            canUse: false,
+        },
+        {
+            icon: '🧃', name: 'Сок',
+            count: `${state.goods.juice ?? 0} шт`,
+            note: '−10% накопленного стресса',
+            canUse: (state.goods.juice ?? 0) > 0,
+            useId: 'juice',
+        },
+    ];
+    el.innerHTML = `<div class="inv-list">${
+        rows.map(r =>
+            `<div class="inv-item">` +
+            `<span class="inv-item__icon">${r.icon}</span>` +
+            `<div class="inv-item__info">` +
+            `<span class="inv-item__name">${r.name}</span>` +
+            `<span class="inv-item__note">${r.note}</span>` +
+            `</div>` +
+            `<div class="inv-item__right">` +
+            `<span class="inv-item__count${r.count.startsWith('✓') ? ' inv-item__count--active' : ''}">${r.count}</span>` +
+            (r.canUse
+                ? `<button class="btn btn--ghost inv-item__use" data-use-id="${r.useId}">Выпить</button>`
+                : '') +
+            `</div>` +
+            `</div>`
+        ).join('')
+    }</div>`;
+    el.querySelectorAll('[data-use-id]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            _useInventoryItem(btn.dataset.useId);
+            _renderShopTab();
+        });
+    });
+}
+
+function _useInventoryItem(id) {
+    if (id === 'juice') {
+        if ((state.goods.juice ?? 0) <= 0) return;
+        state.goods.juice = (state.goods.juice ?? 1) - 1;
+        state.accumulatedStress = Math.max(
+            0,
+            state.accumulatedStress - Math.round((state.accumulatedStress || 0) * 0.10)
+        );
+        saveState();
+        _showToast('🧃 −10% накопленного стресса');
+    }
 }
 
 function _buyShopItem(id) {
@@ -406,12 +562,7 @@ function _buyShopItem(id) {
         case 'cigs':      state.goods.cigarettes = (state.goods.cigarettes || 0) + 20; break;
         case 'energizer': state.goods.energizerActive = true; break;
         case 'vitamins':  state.goods.vitaminsActive  = true; break;
-        case 'juice':
-            state.accumulatedStress = Math.max(
-                0,
-                state.accumulatedStress - Math.round((state.accumulatedStress || 0) * 0.10)
-            );
-            break;
+        case 'juice':     state.goods.juice = (state.goods.juice ?? 0) + 1; break;
     }
     saveState();
     _showToast(`${item.icon} ${item.name} куплен`);
@@ -454,8 +605,56 @@ function _showToast(text) {
 // Helpers
 // ─────────────────────────────────────────────────────────────
 
+// ─────────────────────────────────────────────────────────────
+// Evening ↔ Morning mode
+// ─────────────────────────────────────────────────────────────
+
+const _DOW_NAMES = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
+
+function _renderRestMode() {
+    const dow = _DOW_NAMES[((state.dayCount || 1) - 1) % 7];
+    _dayLabel.textContent = dow;
+    if (state.restMorning) {
+        if (_screenTitle) _screenTitle.textContent = 'Утро';
+        _hourLabel.textContent  = _fmtHour(state.inGameHour ?? 8.0);
+        _btnNextDay.textContent = '▶ Начать рабочий день';
+        _btnNextDay.className   = 'btn btn--success btn--large';
+    } else {
+        if (_screenTitle) _screenTitle.textContent = 'Вечер';
+        _hourLabel.textContent  = _fmtHour(state.inGameHour ?? 18);
+        _btnNextDay.textContent = '💤 Спать';
+        _btnNextDay.className   = 'btn btn--primary btn--large';
+    }
+}
+
+function _handleNextDayBtn() {
+    if (state.restMorning) {
+        // Morning mode → go to planning
+        startNextDay();
+    } else {
+        // Evening mode → fade to black, sleep, fade back in
+        const fade = document.getElementById('screen-fade');
+        fade.classList.add('screen-fade--in');
+        setTimeout(() => {
+            sleepToMorning();
+            _renderRestMode();
+            _updateHours();
+            _renderQuickStrip();
+            _renderOutsideList();
+            setTimeout(() => fade.classList.remove('screen-fade--in'), 80);
+        }, 450);
+    }
+}
+
 function _fmtHour(h) {
     const hrs  = Math.floor(h);
     const mins = Math.floor((h - hrs) * 60);
-    return `${hrs}:${String(mins).padStart(2, '0')}`;
+    const time = `${hrs}:${String(mins).padStart(2, '0')}`;
+    // Time-of-day emoji: 🌅 dawn, 🏙 day, 🌇 evening, 🌃 night
+    let emoji;
+    if (hrs >= 5  && hrs < 10) emoji = '🌅'; // рассвет / утро
+    else if (hrs >= 10 && hrs < 17) emoji = '🏙'; // день
+    else if (hrs >= 17 && hrs < 21) emoji = '🌇'; // закат / вечер
+    else emoji = '🌃';                             // ночь
+    return `${emoji} ${time}`;
 }

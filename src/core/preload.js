@@ -8,6 +8,7 @@ const ROOM_IMAGES = [
     'data/img/room/skill-monitor-light.png',
     'data/img/room/room-light-shadows.png',
     'data/img/room/windows-city-softlight.png',
+    'data/img/room/desk-deck.png',
 ];
 
 /**

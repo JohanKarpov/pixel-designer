@@ -4,8 +4,8 @@ export const Config = Object.freeze({
     SAVE_KEY: 'mid_designer_save',
     SAVE_VERSION: 1,
     // BUILD_VERSION: bump this string on every deploy that may break existing saves.
-    // Format: 'YYYY-MM-DD' or semantic 'major.minor.patch'
-    BUILD_VERSION: '2026-04-16',
+    // Format: 'vMAJOR.MINOR' or 'YYYY-MM-DD'
+    BUILD_VERSION: 'v0.1',
     BUILD_VERSION_KEY: 'mid_designer_build_version',
     FOREST_SAVE_KEY: 'mid_designer_forest_progress',
     LANGUAGE_SAVE_KEY: 'mid_designer_lang',

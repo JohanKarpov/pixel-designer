@@ -39,7 +39,8 @@ export function onEnterResults(dailyStats) {
 function _render(passedStats) {
     const s = passedStats || state.dailyStats || {};
 
-    _dayLabel.textContent = `День ${state.dayCount || 1}`;
+    const _DOW = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
+    _dayLabel.textContent = _DOW[((state.dayCount || 1) - 1) % 7];
 
     // Stats
     _earnedEl.textContent    = _fmt(s.earned    ?? 0);

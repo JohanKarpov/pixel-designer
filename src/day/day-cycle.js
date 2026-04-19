@@ -64,6 +64,7 @@ export function startDay() {
     // Halve current stress (accumulated is untouched until weekend)
     state.stress = Math.floor(state.stress * 0.5);
     _applyNextDayBuffs();
+    state.nextDayBuffs   = {};   // clear AFTER applying
     state.inGameHour     = 9.0;
     state.stressHistory  = [];
     state.comboCount     = 0;
@@ -108,18 +109,37 @@ export function advanceToRest() {
 }
 
 /**
- * Transition REST → PLANNING for the next day.
+ * Sleep: increment day counters and move time to 8:00 AM.
+ * Switches rest screen to morning mode without changing phase.
  */
-export function startNextDay() {
+export function sleepToMorning() {
     if (_phase !== Config.DAY_PHASE.REST) return;
     state.dayCount  = (state.dayCount  || 1) + 1;
     state.dayOfWeek = (((state.dayOfWeek || 1) - 1 + 1) % Config.WEEKEND_CYCLE_DAYS) + 1;
     if (state.dayOfWeek === 1) {
         state.accumulatedStress = 0;   // weekend: accumulated stress fully resets
     }
-    state.dailyStats  = _freshDailyStats();
-    state.nextDayBuffs = {};
-    startDay();
+    state.dailyStats      = _freshDailyStats();
+    state.inGameHour      = 8.0;
+    state.restMorning     = true;
+    state.restUsageCounts = {};
+    saveState();
+}
+
+/**
+ * Transition REST (morning) → PLANNING. Must call sleepToMorning() first.
+ */
+export function startNextDay() {
+    if (_phase !== Config.DAY_PHASE.REST) return;
+    // Guard: if somehow called without sleeping first, do the day increment now
+    if (!state.restMorning) {
+        state.dayCount  = (state.dayCount  || 1) + 1;
+        state.dayOfWeek = (((state.dayOfWeek || 1) - 1 + 1) % Config.WEEKEND_CYCLE_DAYS) + 1;
+        if (state.dayOfWeek === 1) state.accumulatedStress = 0;
+        state.dailyStats = _freshDailyStats();
+    }
+    state.restMorning = false;
+    startDay();   // _applyNextDayBuffs() is called inside startDay()
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -128,21 +148,37 @@ export function startNextDay() {
 
 /**
  * Registry of REST activity definitions.
- * { id, costHours, buff: {key, value} }
+ * morning:true  — only shown in morning sub-state
+ * morning:false — only shown in evening
+ * morning undefined — shown in both (quick pills only)
  */
 export const REST_ACTIVITIES = [
-    // ── Quick: instant, no popup, in-room pills ──
-    { id: 'smoke',  quick: true,  costHours: 0.5,  maxUses: 2, buff: { startingStressMultiplier: 0.90 } },
-    { id: 'coffee', quick: true,  costHours: 0.25, maxUses: 1, buff: { freeTimeBonus: 0.5 }             },
-    // ── Outside: popup confirmation, story-driven ──
-    { id: 'walk',   quick: false, costHours: 2,    buff: { accumulatedStressReduction: 0.15 } },
-    { id: 'movie',  quick: false, costHours: 3,    buff: { comboBonusMultiplier: 1.10 }       },
-    { id: 'bar',    quick: false, costHours: 2,    buff: { fameBonus: 5 }                     },
+    // ── Quick pills (smoke — evening only; coffee — both, context-aware) ──
+    { id: 'smoke',          quick: true,  costHours: 0.5,         maxUses: 2,  morning: false,
+      buff: { startingStressMultiplier: 0.90 } },
+    { id: 'coffee_morning', quick: true,  costHours: 0.25,        maxUses: 1,  morning: true,
+      buff: { energyBonus: 1 } },
+    { id: 'coffee_evening', quick: true,  costHours: 0,           maxUses: 1,  morning: false,
+      buff: { freeTimeBonus: 1.0, stressBonus: 5 } },
+    // ── Evening outside activities ──
+    { id: 'walk',   quick: false, costHours: 2,   morning: false, buff: { accumulatedStressReduction: 0.15 } },
+    { id: 'movie',  quick: false, costHours: 3,   morning: false, buff: { comboBonusMultiplier: 1.10 }       },
+    { id: 'bar',    quick: false, costHours: 2,   morning: false, buff: { fameBonus: 5 }                     },
+    // ── Morning outside activities ──
+    { id: 'breakfast', quick: false, costHours: 0.33, morning: true, buff: { energyBonus: 1 }                       },
+    { id: 'park',      quick: false, costHours: 0.5,  morning: true, buff: { startingStressMultiplier: 0.90 }        },
+    { id: 'exercise',  quick: false, costHours: 0.5,  morning: true, buff: { xpBonusMultiplier: 1.15 }               },
 ];
 
-/** Available in-game hours remaining for REST activities. */
+/** Available in-game hours remaining for REST activities.
+ * Morning pool: 8:00 → 9:00 (1 hour to burn before work).
+ * Evening pool: current time → midnight.
+ */
 export function getRestHoursLeft() {
-    return Math.max(0, 24 - state.inGameHour);
+    if (state.restMorning) {
+        return Math.max(0, 9.0 - (state.inGameHour ?? 8.0));
+    }
+    return Math.max(0, 24 - (state.inGameHour ?? 18));
 }
 
 /**
@@ -154,7 +190,7 @@ export function doRestActivity(activityId) {
     const activity = REST_ACTIVITIES.find(a => a.id === activityId);
     if (!activity) return false;
     if (getRestHoursLeft() < activity.costHours) return false;
-    // Check per-evening usage limit
+    // Check per-session usage limit
     if (activity.maxUses !== undefined) {
         if (!state.restUsageCounts) state.restUsageCounts = {};
         const used = state.restUsageCounts[activityId] || 0;
@@ -162,19 +198,20 @@ export function doRestActivity(activityId) {
         state.restUsageCounts[activityId] = used + 1;
     }
     state.inGameHour += activity.costHours;
-    // Immediate effects
+    // ── Immediate effects ──
     if (activity.buff.freeTimeBonus) {
-        state.inGameHour = Math.max(
-            activity.costHours,
-            state.inGameHour - activity.buff.freeTimeBonus
-        );
+        // Evening coffee: add free time by rewinding the clock, then add stress
+        state.inGameHour = Math.max(0, state.inGameHour - activity.buff.freeTimeBonus);
+    }
+    if (activity.buff.stressBonus) {
+        state.stress = Math.min(100, (state.stress || 0) + activity.buff.stressBonus);
     }
     if (activity.buff.fameBonus) {
         state.fame = (state.fame || 0) + activity.buff.fameBonus;
     }
-    // Everything else → nextDayBuffs
+    // ── Next-day buffs ──
     Object.keys(activity.buff)
-        .filter(k => k !== 'freeTimeBonus' && k !== 'fameBonus')
+        .filter(k => !['freeTimeBonus', 'stressBonus', 'fameBonus'].includes(k))
         .forEach(k => { state.nextDayBuffs[k] = activity.buff[k]; });
     saveState();
     return true;
@@ -201,7 +238,17 @@ function _applyNextDayBuffs() {
     if (buffs.startingStressMultiplier) {
         state.stress = Math.floor(state.stress * buffs.startingStressMultiplier);
     }
-    // xpBonusMultiplier and comboBonusMultiplier are read at the point of use in economy.js
+    if (buffs.energyBonus) {
+        state.energyResourceMax = (state.energyResourceMax || 5) + buffs.energyBonus;
+        state.energyResource    = state.energyResourceMax;
+    }
+    if (buffs.xpBonusMultiplier) {
+        // Stored on state for economy.js to read at point of use (buildOrderFromCard)
+        state.xpBonusMultiplier = buffs.xpBonusMultiplier;
+    } else {
+        state.xpBonusMultiplier = 1;
+    }
+    // comboBonusMultiplier is read at the point of use in economy.js
 }
 
 function _doTransitionToResults() {

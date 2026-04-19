@@ -492,9 +492,13 @@ export function generateForActiveOrder(result, reactionMs = 9999, rhythmMult = 1
     const _prevFailed    = state.stats.failedOrders || 0;
     const _prevEarned    = state.stats.totalMoneyEarned;
     const _prevLevel     = state.level;
-    const _prevXp        = state.xp;
+    const _prevXp        = state.xp instanceof Decimal ? state.xp : new Decimal(state.xp || 0);
+    if (!(state.xp instanceof Decimal)) state.xp = _prevXp; // defensive restore before use
 
     registerGenerationStepWithResult(result, false);
+
+    // ── defensive: ensure state.xp is still a Decimal after the step ──────
+    if (!(state.xp instanceof Decimal)) state.xp = new Decimal(state.xp || 0);
 
     // ── Update dailyStats ─────────────────────────────────────────
     if (!state.dailyStats) {
@@ -824,6 +828,7 @@ function _chapterLevelCap() {
 
 function gainXp(amount) {
     if (amount <= 0) return;
+    if (!(state.xp instanceof Decimal)) state.xp = new Decimal(state.xp || 0); // defensive
     state.xp = state.xp.add(amount);
 
     // Research pool accumulation (parallel with leveling xp)
@@ -1256,7 +1261,7 @@ export function buildOrderFromCard(cardDef) {
     const now = Date.now();
 
     const incomeMult      = fx.incomeMultiplier ?? 1;
-    const xpMult          = fx.xpMultiplier    ?? 1;
+    const xpMult          = (fx.xpMultiplier ?? 1) * (state.xpBonusMultiplier ?? 1);
     const fameMult        = fx.fameMultiplier  ?? 1;
     const nasmotrXpBonus  = (fx.promoWaveActive && (cardDef.tags || []).includes('насмотренность')) ? 1.25 : 1;
     const bonusXpFlat     = fx.bonusXpFlat || 0;

@@ -58,7 +58,7 @@ function _drawInto(target, n) {
         if (!state.drawPile || state.drawPile.length === 0) break;
         const id = state.drawPile.pop();
         const def = CARD_MAP[id];
-        if (def) target.push({ ...def });   // shallow copy of definition
+        if (def) target.push({ ...def, _uid: `${id}_${Math.random().toString(36).slice(2)}` });
     }
 }
 
@@ -68,15 +68,13 @@ function _drawInto(target, n) {
 
 /**
  * Add a new card to the player's deck (from unlock, client reward, etc.).
- * Does nothing if the card id is already in the deck.
+ * Allows multiple copies of the same card.
  */
 export function addCardToDeck(cardId) {
     if (!CARD_MAP[cardId]) {
         console.warn(`[deck] Unknown card id: ${cardId}`);
         return;
     }
-    const already = (state.playerDeck || []).some(e => e.id === cardId);
-    if (already) return;
     state.playerDeck.push({ id: cardId, enabled: true });
     saveState();
 }
@@ -96,7 +94,7 @@ export function setCardEnabled(cardId, enabled) {
  * sorted by rarity then title — used by the deck builder UI.
  */
 export function getPlayerDeckWithDefs() {
-    const rarityOrder = { epic: 0, rare: 1, common: 2 };
+    const rarityOrder = { legendary: 0, epic: 1, rare: 2, common: 3 };
     return (state.playerDeck || [])
         .map(entry => ({ entry, def: CARD_MAP[entry.id] }))
         .filter(({ def }) => !!def)

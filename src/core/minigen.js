@@ -320,7 +320,7 @@ function _preloadImages(urls) {
 // even at 20+ cells/sec on mobile.
 // ─────────────────────────────────────────────────────────────
 
-async function _showSlotPopup(manifest, { allowedTags, inlineContainer }) {
+async function _showSlotPopup(manifest, { allowedTags, inlineContainer, onBeatHit = null }) {
     // Cells per second per drum (normalized by cellH at runtime — screen-size independent)
     const SPEEDS_PPS = [8, 8, 8];
     const STRIP_SIZE = 5; // 5 unique images per drum
@@ -458,7 +458,10 @@ async function _showSlotPopup(manifest, { allowedTags, inlineContainer }) {
             if (stopped[drumIdx]) return;
             stopped[drumIdx] = true;
 
-            // Snap: round to nearest cell boundary.
+            // Score this tap against the beat — builds rhythm combo for payout bonus
+            const hit = checkBeatHit();
+            if (onBeatHit) onBeatHit(hit.quality);
+
             // Use rawIdx (0..STRIP_SIZE) for snapY to avoid reverse-jump when pos≈totalH:
             //   rawIdx=5 → snapY = -(5*cellH) = position of the 6th duplicate cell (smooth).
             //   rawIdx%STRIP_SIZE → still correct image lookup (0..4).
@@ -540,7 +543,7 @@ function _showSlotResult(container, combo, emojiCtx, onDone) {
  * @param {HTMLElement|null} [options.inlineContainer]
  * @returns {Promise<{ result: string, reactionMs: number, slotMult: number }>}
  */
-export async function runMinigen({ tags = null, mode = 'sort', inlineContainer = null } = {}) {
+export async function runMinigen({ tags = null, mode = 'sort', inlineContainer = null, onBeatHit = null } = {}) {
     const t0 = performance.now();
     let result   = 'skip';
     let slotMult = 1;
@@ -549,7 +552,7 @@ export async function runMinigen({ tags = null, mode = 'sort', inlineContainer =
         if (!manifest?.groups?.length) return { result: 'skip', reactionMs: 0, slotMult: 1 };
 
         if (mode === 'gen') {
-            const r = await _showSlotPopup(manifest, { allowedTags: tags || undefined, inlineContainer });
+            const r = await _showSlotPopup(manifest, { allowedTags: tags || undefined, inlineContainer, onBeatHit });
             result   = r.result;
             slotMult = r.slotMult;
         } else {

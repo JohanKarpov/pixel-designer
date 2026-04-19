@@ -28,8 +28,9 @@
   <div data-screen="planning">
     <header class="screen-header">
       <span class="screen-header__title">Планирование</span>
+      <button class="help-btn" data-help="planning" aria-label="Помощь">❓</button>
       <span class="screen-header__day" id="planning-day-label">День 1</span>
-      <span class="screen-header__hour">9:00</span>
+      <span class="screen-header__hour">🌅 9:00</span>
       <button class="vol-btn" id="vol-btn" aria-label="Громкость">🔊</button>
     </header>
 
@@ -96,6 +97,7 @@
     <div class="work-beat-flash" id="work-beat-flash"></div>
     <header class="screen-header">
       <span class="screen-header__title">Рабочий день</span>
+      <button class="help-btn" data-help="work" aria-label="Помощь">❓</button>
       <span class="screen-header__day" id="work-day-label">День 1</span>
       <span class="screen-header__hour" id="work-hour">9:00</span>
       <button class="vol-btn" aria-label="Громкость">🔊</button>
@@ -184,6 +186,8 @@
         <div class="rhythm-bar__track">
           <div class="rhythm-bar__fill" id="rhythm-bar-fill" style="width:0%"></div>
         </div>
+        <!-- Earnings ticker -->
+        <div class="rhythm-bar__ticker" id="rhythm-ticker"></div>
         <!-- Hit quality toast -->
         <div class="rhythm-toast" id="rhythm-toast"></div>
       </div>
@@ -201,6 +205,7 @@
   <div data-screen="results">
     <header class="screen-header">
       <span class="screen-header__title">Итоги дня</span>
+      <button class="help-btn" data-help="results" aria-label="Помощь">❓</button>
       <span class="screen-header__day" id="results-day-label">День 1</span>
       <button class="vol-btn" aria-label="Громкость">🔊</button>
     </header>
@@ -287,7 +292,9 @@
   <!-- ── REST ──────────────────────────────────────────────── -->
   <div data-screen="rest">
     <header class="screen-header">
-      <span class="screen-header__title">Вечер</span>
+      <button class="debug-reset-btn" id="debug-reset-btn" title="Debug: полный сброс">↺</button>
+      <span class="screen-header__title" id="rest-screen-title">Вечер</span>
+      <button class="help-btn" data-help="rest" aria-label="Помощь">❓</button>
       <span class="screen-header__day" id="rest-day-label">День 1</span>
       <span class="screen-header__hour" id="rest-hour">18:00</span>
       <button class="vol-btn" aria-label="Громкость">🔊</button>
@@ -385,7 +392,30 @@
       <button class="btn btn--primary btn--large" id="btn-next-day">Начать новый день →</button>
     </footer>
   </div>
-
+  <!-- ── UPGRADES (placeholder) ──────────────────────── -->
+  <div data-screen="upgrades">
+    <header class="screen-header">
+      <button class="btn btn--ghost" id="upgrades-back-btn" style="font-size:calc(var(--r)*18);padding:0 calc(var(--r)*4)">&#8592;</button>
+      <span class="screen-header__title">Навыки</span>
+    </header>
+    <div class="screen-body" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:calc(var(--r)*16);padding:calc(var(--r)*40) calc(var(--r)*24)">
+      <span style="font-size:calc(var(--r)*48)">&#128295;</span>
+      <span style="font-size:calc(var(--r)*20);font-weight:700;color:var(--clr-text)">Раздел в разработке</span>
+      <span style="font-size:calc(var(--r)*14);color:var(--clr-text-muted);text-align:center">Скоро здесь появится дерево навыков,<br>улучшающих твои рабочие процессы.</span>
+    </div>
+  </div>  <!-- ── HELP SHEET (shared, all screens) ─────────────────── -->
+  <div class="help-sheet" id="help-sheet" inert>
+    <div class="help-sheet__backdrop" id="help-sheet-backdrop"></div>
+    <div class="help-sheet__panel" role="dialog" aria-modal="true">
+      <div class="help-sheet__header">
+        <span class="help-sheet__title" id="help-sheet-title">Помощь</span>
+        <button class="help-sheet__close" id="help-sheet-close">✕</button>
+      </div>
+      <div class="help-sheet__body" id="help-sheet-body"></div>
+    </div>
+  </div>
+  <!-- ── Sleep fade overlay ──────────────────────────────── -->
+  <div id="screen-fade"></div>
   <!-- ── Offline agent banner ──────────────────────────────── -->
   <div class="offline-banner" id="offline-banner">
     <span class="offline-banner__icon">🤖</span>

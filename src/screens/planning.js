@@ -5,7 +5,6 @@ import { state, saveState } from '../core/state.js';
 import { advanceToWork } from '../day/day-cycle.js';
 import { buyGood } from '../core/economy.js';
 import { ensurePlayerDeck, shuffleDeck, dealHand, drawCards } from '../core/deck.js';
-import { DEBUG_RHYTHM_CARD } from '../../data/cards.js';
 import { evaluateCombos } from '../core/combos.js';
 
 // ─────────────────────────────────────────────────────────────
@@ -28,11 +27,6 @@ export function onEnterPlanning() {
     // New day: shuffle deck and deal hand
     shuffleDeck();
     dealHand(5);
-    // Inject debug card at the front of the hand (always visible)
-    if (!state.currentHand) state.currentHand = [];
-    if (!state.currentHand.find(c => c.id === DEBUG_RHYTHM_CARD.id)) {
-        state.currentHand.unshift(DEBUG_RHYTHM_CARD);
-    }
     // Reset queue and combo effects for the new day
     state.orderQueue = [];
     state.activeComboEffects = {};
@@ -101,8 +95,8 @@ function _renderKanban() {
     const usedEnergy = _usedEnergy();
 
     // Pool: currentHand — skip cards already in queue
-    const queueIds = new Set((state.orderQueue || []).map(c => c.id));
-    const hand = (state.currentHand || []).filter(c => !queueIds.has(c.id));
+    const queueUids = new Set((state.orderQueue || []).map(c => c._uid).filter(Boolean));
+    const hand = (state.currentHand || []).filter(c => !queueUids.has(c._uid));
 
     if (hand.length === 0) {
         const empty = document.createElement('div');
@@ -217,6 +211,7 @@ function _makeCard(card, disabled = false) {
     if (disabled) el.classList.add('kanban-card--disabled');
     const cc = _colorClass(card);
     if (cc) el.classList.add(`kanban-card--${cc}`);
+    el.dataset.rarity = card.rarity || 'common';
 
     el.dataset.id  = card.id ?? Math.random();
     el.dataset.col = 'pool';
@@ -253,6 +248,7 @@ function _makeSquare(card, index) {
     el.className = 'kanban-square';
     const cc = _colorClass(card);
     if (cc) el.classList.add(`kanban-square--${cc}`);
+    el.dataset.rarity = card.rarity || 'common';
 
     el.dataset.id  = card.id ?? Math.random();
     el.dataset.col = 'queue';
@@ -528,8 +524,8 @@ function _addToQueue(card) {
     if (!card) return;
     if (!state.orderQueue) state.orderQueue = [];
     if (state.orderQueue.length >= MAX_QUEUE) return;
-    // Avoid duplicates
-    if (state.orderQueue.some(q => q.id === card.id)) return;
+    // Avoid adding the same instance twice
+    if (card._uid && state.orderQueue.some(q => q._uid === card._uid)) return;
     // Check IP budget
     if (_usedEnergy() + (card.cost || 1) > state.energyResourceMax) return;
     state.orderQueue.push(card);
@@ -538,8 +534,9 @@ function _addToQueue(card) {
     if (card.effect === 'draw_2') {
         drawCards(2);
         // Remove the utility card from the queue AND hand after triggering
-        state.orderQueue  = state.orderQueue.filter(q => q.id !== card.id);
-        state.currentHand = (state.currentHand || []).filter(c => c.id !== card.id);
+        const _uid = card._uid;
+        state.orderQueue  = state.orderQueue.filter(q => _uid ? q._uid !== _uid : q.id !== card.id);
+        state.currentHand = (state.currentHand || []).filter(c => _uid ? c._uid !== _uid : c.id !== card.id);
     }
 
     _recomputeCombos();
@@ -548,7 +545,8 @@ function _addToQueue(card) {
 
 function _removeFromQueue(card) {
     if (!card) return;
-    state.orderQueue = (state.orderQueue || []).filter(q => q.id !== card.id);
+    if (card._uid) state.orderQueue = (state.orderQueue || []).filter(q => q._uid !== card._uid);
+    else           state.orderQueue = (state.orderQueue || []).filter(q => q.id !== card.id);
     _recomputeCombos();
     saveState();
 }
