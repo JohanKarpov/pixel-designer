@@ -85,6 +85,8 @@ html, body {
   line-height: 1.4;
   user-select: none;
   -webkit-user-select: none;
+  /* Prevent double-tap zoom; single-tap still fires click immediately */
+  touch-action: manipulation;
 }
 
 /* ── Layout root ──────────────────────────────────────────────── */

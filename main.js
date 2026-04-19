@@ -45,6 +45,19 @@ _setScaleRoot();
 window.addEventListener('resize', _setScaleRoot);
 window.visualViewport?.addEventListener('resize', _setScaleRoot);
 
+// ── Block pinch-zoom and Safari gesture zoom ─────────────────────────────
+// (viewport meta user-scalable=no is ignored in some iOS versions)
+document.addEventListener('touchstart', e => {
+    if (e.touches.length > 1) e.preventDefault();
+}, { passive: false });
+document.addEventListener('touchmove', e => {
+    if (e.touches.length > 1) e.preventDefault();
+}, { passive: false });
+// Safari-specific gesture events
+document.addEventListener('gesturestart',  e => e.preventDefault());
+document.addEventListener('gesturechange', e => e.preventDefault());
+document.addEventListener('gestureend',    e => e.preventDefault());
+
 // ── Telegram WebApp setup ────────────────────────────────────────────────────
 if (window.Telegram?.WebApp) {
     window.Telegram.WebApp.expand();

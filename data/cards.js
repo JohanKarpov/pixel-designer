@@ -222,17 +222,19 @@ export const CARD_MAP = Object.fromEntries(CARD_DEFINITIONS.map(c => [c.id, c]))
 
 /** Returns the default starter deck as array of card ids (with duplicates for multi-copy cards) */
 export function getStarterDeckIds() {
+    // Gen tasks: ~70% of hand (14/20)
     return [
-        'contract_work', 'contract_work', 'contract_work',
-        'moodboard',      'moodboard',
-        'storyboard',     'storyboard',
-        'social_media_pack',
-        'ui_mockup',
-        'prompt_research', 'prompt_research',
+        'contract_work', 'contract_work', 'contract_work', 'contract_work',
+        'moodboard',      'moodboard',     'moodboard',
+        'storyboard',     'storyboard',    'storyboard',
+        'social_media_pack', 'social_media_pack',
+        'ui_mockup',         'ui_mockup',
+        // Non-gen: ~30%
+        'prompt_research',
         'deep_research',
         'blog_post',
-        'portfolio_update',
-        'find_tasks',  'find_tasks',
-        'focus_boost', 'focus_boost',
+        'find_tasks',
+        'focus_boost',
+        'focus_boost',
     ];
 }
