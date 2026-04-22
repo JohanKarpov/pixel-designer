@@ -318,6 +318,19 @@
            so the background never clips on any screen size. -->
       <div class="rest-scene" id="rest-scene">
 
+      <!-- City background — behind room, masked to window shapes, parallax via gyro -->
+      <div class="rest-city-wrap" id="rest-city-wrap">
+        <div class="rest-city-inner" id="rest-city-inner">
+          <div class="rest-city-layer" data-city="day"     id="city-layer-day"></div>
+          <div class="rest-city-layer" data-city="night"   id="city-layer-night"></div>
+          <div class="rest-city-layer" data-city="sunrise" id="city-layer-sunrise"></div>
+          <div class="rest-city-layer" data-city="rain"    id="city-layer-rain"></div>
+        </div>
+      </div>
+
+      <!-- Room image — placed over city; windows must be transparent in PNG -->
+      <div class="rest-room-bg" id="rest-room-bg"></div>
+
       <!-- PNG overlay layers (driven by flicker.js) -->
       <div class="rest-layer rest-layer--monitors"      id="rest-layer-monitors"></div>
       <div class="rest-layer rest-layer--skill-monitor" id="rest-layer-skill-monitor"></div>

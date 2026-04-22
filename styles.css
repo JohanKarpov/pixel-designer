@@ -1747,8 +1747,59 @@ html, body {
   max-width: 100%;
   overflow: hidden;
   background: #080916;
+  /* room-bg moved to .rest-room-bg so city layer can sit behind it */
+}
+
+/* ── City background (behind room, masked to window shapes) ── */
+
+/* Mask wrapper — shows city only through luminance of the softlight window PNG */
+.rest-city-wrap {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  /* Use windows-city-softlight.png as luminance mask:
+     bright areas (windows) = visible, dark areas (walls/furniture) = hidden */
+  -webkit-mask-image: url('data/img/room/windows-city-softlight.png');
+  -webkit-mask-size: cover;
+  -webkit-mask-position: center top;
+  mask-image: url('data/img/room/windows-city-softlight.png');
+  mask-size: cover;
+  mask-position: center top;
+  /* mask-mode defaults to alpha — uses the PNG's alpha channel */
+}
+
+/* Inner container — this is the parallax target (moved by gyro) */
+.rest-city-inner {
+  position: absolute;
+  inset: 0;
+  will-change: transform;
+}
+
+/* Individual time-of-day layers — stacked, crossfade via opacity */
+.rest-city-layer {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 2s ease;
+  background-repeat: no-repeat;
+  background-position: left top;
+  /* 40% of natural size: 1983px → calc(--r * 793), height auto */
+  background-size: calc(var(--r) * 793) auto;
+}
+.rest-city-layer[data-city="day"]     { background-image: url('data/img/room/city-view-day.png');     }
+.rest-city-layer[data-city="night"]   { background-image: url('data/img/room/city-view-night.png');   }
+.rest-city-layer[data-city="sunrise"] { background-image: url('data/img/room/city-view-sunrise.png'); }
+.rest-city-layer[data-city="rain"]    { background-image: url('data/img/room/city-view-rain.png');    }
+
+/* ── Room image (with transparent windows) ───────────────── */
+.rest-room-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
   background-image: url('data/img/room/room-bg.png');
-  background-size: cover;  /* square container + square image = perfect fit, no crop */
+  background-size: cover;
   background-position: center top;
 }
 
@@ -1759,6 +1810,7 @@ html, body {
   pointer-events: none;
   opacity: 0;
   background-size: cover;
+  z-index: 2;
   background-position: center top;
   z-index: 1;
 }
@@ -1808,6 +1860,7 @@ html, body {
   display: flex;
   gap: calc(var(--r) * 8);
   flex-wrap: wrap;
+  z-index: 3;
 }
 
 .rest-quick-pill {
@@ -1844,7 +1897,7 @@ html, body {
   border: none;
   border-radius: calc(var(--r) * 10);
   cursor: pointer;
-  z-index: 2;
+  z-index: 3;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1919,6 +1972,7 @@ html, body {
   position: absolute;
   bottom: calc(var(--r) * 14);
   left: calc(var(--r) * 14);
+  z-index: 3;
   display: flex;
   align-items: center;
   gap: calc(var(--r) * 5);
@@ -2516,3 +2570,118 @@ html, body {
   opacity: 1;
   pointer-events: all;
 }
+
+/* ═══════════════════════════════════════════════════════════
+   Scene Dialog (narrative panels)
+   ═══════════════════════════════════════════════════════════ */
+.scene-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 8000;
+  display: flex;
+  align-items: flex-end;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+.scene-dialog--visible {
+  pointer-events: all;
+  opacity: 1;
+}
+.scene-dialog__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+}
+.scene-dialog__panel {
+  position: relative;
+  width: 100%;
+  background: #1a1a2e;
+  border-radius: calc(var(--r) * 16) calc(var(--r) * 16) 0 0;
+  padding: calc(var(--r) * 18) calc(var(--r) * 18) calc(var(--r) * 22);
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--r) * 10);
+}
+.scene-dialog__speaker-row {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--r) * 10);
+}
+.scene-dialog__portrait {
+  width: calc(var(--r) * 44);
+  height: calc(var(--r) * 44);
+  border-radius: 50%;
+  background: #2a2a4a;
+  border: calc(var(--r) * 2) solid #5a4fcf;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(var(--r) * 24);
+  flex-shrink: 0;
+}
+.scene-dialog__speaker-name {
+  font-size: calc(var(--r) * 13);
+  font-weight: 700;
+  color: #a89fff;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.scene-dialog__text {
+  font-size: calc(var(--r) * 15);
+  line-height: 1.55;
+  color: #e8e8f4;
+  margin: 0;
+  min-height: calc(var(--r) * 52);
+}
+.scene-dialog__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: calc(var(--r) * 4);
+}
+.scene-dialog__dots {
+  display: flex;
+  gap: calc(var(--r) * 6);
+}
+.scene-dialog__dot {
+  width: calc(var(--r) * 6);
+  height: calc(var(--r) * 6);
+  border-radius: 50%;
+  background: #3a3a5a;
+}
+.scene-dialog__dot--active {
+  background: #7c6ff7;
+}
+.scene-dialog__next-btn {
+  background: #5a4fcf;
+  color: #fff;
+  border: none;
+  border-radius: calc(var(--r) * 10);
+  padding: calc(var(--r) * 9) calc(var(--r) * 20);
+  font-size: calc(var(--r) * 14);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.scene-dialog__next-btn:active { background: #4a3fbf; }
+
+/* Choices */
+.scene-dialog__choice-row {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--r) * 8);
+}
+.scene-dialog__choice-btn {
+  background: #2a2a4a;
+  border: calc(var(--r) * 1.5) solid #5a4fcf;
+  color: #c8c4ff;
+  border-radius: calc(var(--r) * 10);
+  padding: calc(var(--r) * 10) calc(var(--r) * 14);
+  font-size: calc(var(--r) * 14);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.scene-dialog__choice-btn:active { background: #3a3a6a; }
+

@@ -25,6 +25,7 @@ import { bindHelpButtons }           from './src/ui/help.js';
 import { playBgm, stopBgm, setBgmVolume, getBgmVolume } from './src/core/bgm.js';
 import { setRhythmVolume }           from './src/core/rhythm.js';
 import { preloadAssets }            from './src/core/preload.js';
+import { requestGyroPermission }     from './src/core/gyro.js';
 
 // ── Service Worker ────────────────────────────────────────────────────
 if ('serviceWorker' in navigator) {
@@ -195,10 +196,14 @@ await preloadAssets(p => {
     if (_loadingPct) _loadingPct.textContent = `${pct}%`;
 });
 
-// Show START button — wait for user gesture to init AudioContext
+// Show START button — wait for user gesture to init AudioContext + request gyro permission
 if (_loadingActions) _loadingActions.hidden = false;
 await new Promise(resolve => {
-    if (_loadingStartBtn) _loadingStartBtn.addEventListener('click', resolve, { once: true });
+    if (_loadingStartBtn) _loadingStartBtn.addEventListener('click', async () => {
+        // Request gyro permission inside user gesture (required for iOS 13+)
+        await requestGyroPermission();
+        resolve();
+    }, { once: true });
     else resolve(); // fallback: no button found
 });
 

@@ -4,6 +4,9 @@ import { state, saveState }                                                     
 import { startNextDay, sleepToMorning, doRestActivity, getRestHoursLeft, REST_ACTIVITIES } from '../day/day-cycle.js';
 import { getPlayerDeckWithDefs, setCardEnabled, ensurePlayerDeck }               from '../core/deck.js';
 import { startFlicker, stopFlicker, updateWindowOpacity, setChannelBoost }      from '../core/flicker.js';
+import { selectScene, applyOutcomes }                                            from '../core/story.js';
+import { showScene }                                                             from '../ui/scene-dialog.js';
+import { getGyro, recalibrateGyro, initGyro }                                   from '../core/gyro.js';
 
 // ─────────────────────────────────────────────────────────────
 // Display metadata
@@ -107,6 +110,96 @@ const _sheetClose      = document.getElementById('rest-sheet-close');
 
 let _pendingActivityId = null;
 let _windowEl          = null;
+let _cityInnerEl       = null;
+let _cityWrapEl        = null;
+let _parallaxRafId     = null;
+
+// ─────────────────────────────────────────────────────────────
+// City layer switching + time-of-day
+// ─────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────
+// City layer switching — smooth crossfade by hour
+// ─────────────────────────────────────────────────────────────
+//
+// Schedule:
+//   sunrise: 6:00–10:00
+//   day:    10:00–17:00
+//   sunrise: 17:00–20:00  (sunset placeholder)
+//   night:  20:00–6:00
+//
+// ±30 min fade zones at each boundary.
+
+function _lerp01(val, lo, hi) {
+    if (hi <= lo) return 0;
+    return Math.max(0, Math.min(1, (val - lo) / (hi - lo)));
+}
+
+function _computeCityOpacities(hour) {
+    const h    = ((hour % 24) + 24) % 24;
+    // For night, which wraps midnight, map hours 0–6 → 24–30
+    const h24  = h < 6.5 ? h + 24 : h;
+    const FADE = 0.5; // half-width of each transition window (30 min)
+
+    const sunrise = Math.max(
+        // morning: 6–10
+        Math.min(_lerp01(h,   5.5, 6.5),  1 - _lerp01(h,   9.5, 10.5)),
+        // evening: 17–20
+        Math.min(_lerp01(h,  16.5, 17.5), 1 - _lerp01(h,  19.5, 20.5))
+    );
+
+    const day = Math.min(
+        _lerp01(h, 9.5, 10.5),
+        1 - _lerp01(h, 16.5, 17.5)
+    );
+
+    // night wraps midnight: active 20–30 (= 20–6 next day)
+    const night = Math.min(
+        _lerp01(h24, 19.5, 20.5),
+        1 - _lerp01(h24, 29.5, 30.5)
+    );
+
+    return { day, sunrise, night, rain: 0 };
+}
+
+function _updateCityLayer(hour) {
+    if (!_cityWrapEl) return;
+    const opacities = _computeCityOpacities(hour);
+    // rain driven by state.weather only — not part of hour schedule
+    opacities.rain = (state.weather === 'rain') ? 1 : 0;
+    _cityWrapEl.querySelectorAll('.rest-city-layer').forEach(el => {
+        const key = el.dataset.city;
+        el.style.opacity = (opacities[key] ?? 0).toFixed(3);
+    });
+}
+
+// ─────────────────────────────────────────────────────────────
+// City parallax (gyro → inner container translate)
+// ─────────────────────────────────────────────────────────────
+
+const PARALLAX_GAMMA_SCALE = 0.5;   // degrees → px  (horizontal)
+const PARALLAX_BETA_SCALE  = 0.3;   // degrees → px  (vertical)
+
+function _startParallax() {
+    if (_parallaxRafId) return;
+    function _frame() {
+        if (_cityInnerEl) {
+            const { beta, gamma } = getGyro();
+            const tx = -gamma * PARALLAX_GAMMA_SCALE;
+            const ty = -beta  * PARALLAX_BETA_SCALE;
+            _cityInnerEl.style.transform = `translate(${tx}px, ${ty}px)`;
+        }
+        _parallaxRafId = requestAnimationFrame(_frame);
+    }
+    _parallaxRafId = requestAnimationFrame(_frame);
+}
+
+function _stopParallax() {
+    if (_parallaxRafId) {
+        cancelAnimationFrame(_parallaxRafId);
+        _parallaxRafId = null;
+    }
+}
 
 // ─────────────────────────────────────────────────────────────
 // Entry point
@@ -129,13 +222,22 @@ export function onEnterRest() {
     const skillEl       = document.getElementById('rest-layer-skill-monitor');
     const lampEl        = document.getElementById('rest-layer-lamp-shadows');
     _windowEl           = document.getElementById('rest-layer-window-city');
+    _cityInnerEl        = document.getElementById('rest-city-inner');
+    _cityWrapEl         = document.getElementById('rest-city-wrap');
     state.restUsageCounts = {};
     startFlicker(monitorsEl, skillEl, lampEl);
     updateWindowOpacity(_windowEl, state.inGameHour ?? 18);
+
+    // City parallax
+    initGyro();
+    recalibrateGyro();
+    _updateCityLayer(state.inGameHour ?? 18);
+    _startParallax();
 }
 
 export function onLeaveRest() {
     stopFlicker();
+    _stopParallax();
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -147,6 +249,7 @@ function _updateHours() {
     _hoursEl.textContent = `${h.toFixed(1)}ч`;
     _hourLabel.textContent = _fmtHour(state.inGameHour);
     if (_windowEl) updateWindowOpacity(_windowEl, state.inGameHour);
+    _updateCityLayer(state.inGameHour ?? 18);
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -254,7 +357,7 @@ function _hideOutsidePopup() {
 function _bindPopup() {
     _popupCancel.onclick   = _hideOutsidePopup;
     _popupBackdrop.onclick = _hideOutsidePopup;
-    _popupConfirm.onclick  = () => {
+    _popupConfirm.onclick  = async () => {
         if (!_pendingActivityId) return;
         const id   = _pendingActivityId;
         const meta = OUTSIDE_META[id] || { icon: '❓', name: id };
@@ -265,7 +368,15 @@ function _bindPopup() {
             _renderQuickStrip();
             _renderOutsideList();
             _updateNotificationDots();
-            _showToast(`${meta.icon} ${meta.name} — готово`);
+
+            // Try to trigger a scene for this location
+            const scene = selectScene(id);
+            if (scene) {
+                const outcomes = await showScene(scene);
+                applyOutcomes({ ...scene, outcomes }, { showToast: _showToast });
+            } else {
+                _showToast(`${meta.icon} ${meta.name} — готово`);
+            }
         }
     };
 }

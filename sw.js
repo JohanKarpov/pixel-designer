@@ -4,7 +4,7 @@
 // Runtime caching: images and audio cached on first fetch (lazy).
 // Version bump CACHE_NAME to force re-cache on new deploy.
 
-const CACHE_NAME = 'pixel-designer-v0.1_a';
+const CACHE_NAME = 'pixel-designer-v0.1c';
 
 // On localhost, skip all caching — always fetch fresh files
 const IS_DEV = self.location.hostname === 'localhost' || self.location.hostname === '127.0.0.1';

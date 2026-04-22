@@ -9,3 +9,6 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Story draft — local only, never pushed
+data/story-draft.js

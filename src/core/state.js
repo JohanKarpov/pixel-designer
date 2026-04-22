@@ -95,6 +95,7 @@ export const state = {
     chapter2Completed: false,
     ch1FiredEvents: {},
     pendingStoryOutro: false,
+    storyFlags: {},         // arbitrary story flag dict; keys: flag name, value: true | any
 
     // ── Intro / Tutorial ──
     language: 'ru',
